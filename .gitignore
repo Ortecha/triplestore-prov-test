@@ -216,3 +216,22 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- RDFox provenance stress test ---------------------------------------
+# Generated datasets — reproducible from generate_dataset.py and a seed, and
+# large enough that they do not belong in the repo.
+out/
+data*/
+*.trig
+*.trig.gz
+*.nq
+*.nq.gz
+*.bin
+
+# Harness scratch: the per-query .rdfox scripts measure.py writes for `exec N`.
+results/scripts/
+
+# Dataset validation leaves these behind for inspection.
+*.prefixcheck-*
+
+.DS_Store

@@ -1,0 +1,1289 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RDFox named-graph provenance — scaling</title>
+<style>
+:root{--bg:#fff;--fg:#16181d;--mut:#666c7a;--line:#e3e6ec;--card:#fbfcfd;
+--s1:#2f6fed;--s2:#e2761b;--s3:#12967a;--s4:#b5468f;}
+@media (prefers-color-scheme:dark){:root{--bg:#14161a;--fg:#e8eaee;--mut:#98a0ae;
+--line:#2a2e36;--card:#1a1d22;--s1:#6aa0ff;--s2:#f5a04a;--s3:#3fc3a3;--s4:#e07ac0;}}
+*{box-sizing:border-box}
+body{margin:0;padding:32px 24px 64px;background:var(--bg);color:var(--fg);
+font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;}
+main{max-width:1180px;margin:0 auto}
+h1{font-size:25px;margin:0 0 6px;letter-spacing:-.01em}
+h2{font-size:18px;margin:40px 0 4px;letter-spacing:-.01em}
+h3{font-size:14px;margin:0 0 2px;font-weight:600}
+p.sub{color:var(--mut);margin:0 0 4px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:20px;margin-top:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.chart{width:100%;height:auto;display:block;overflow:visible}
+.grid{stroke:var(--line);stroke-width:1}
+.tick{fill:var(--mut);font-size:10.5px}
+.ty{text-anchor:end}.tx{text-anchor:middle}
+.axis{fill:var(--mut);font-size:11.5px}
+.link{fill:none;stroke-width:1.6;opacity:.95}
+.fit{fill:none;stroke-width:1.4;stroke-dasharray:5 4;opacity:.55}
+.pt{stroke:var(--bg);stroke-width:1.2}
+.pt.censored{stroke-width:1.6;stroke-dasharray:2.2 1.8}
+.rule{stroke:var(--mut);stroke-width:1;stroke-dasharray:3 3;opacity:.55}
+.rulelab{fill:var(--mut);font-size:9.5px;text-anchor:end}
+.leader{stroke-width:1;opacity:.35;stroke-dasharray:2 2}
+.endlab{font-size:10.5px;font-weight:600}
+section.summary{margin:26px 0 8px}
+section.summary .card{padding:18px 20px}
+section.summary h3{font-size:16px;margin-bottom:3px}
+.takeaway{margin:10px 0 0;padding:9px 12px;background:var(--bg);border:1px solid var(--line);
+border-radius:7px;font-size:13.5px;line-height:1.5}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin:2px 0 8px;font-size:12.5px;color:var(--mut)}
+.key i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+.note{color:var(--mut);font-size:12px;margin:6px 0 0}
+table{border-collapse:collapse;width:100%;font-size:13px;margin-top:10px}
+th,td{text-align:right;padding:6px 9px;border-bottom:1px solid var(--line);
+font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mut);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em}
+tbody tr:hover{background:var(--bg)}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--card);
+border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+.caveat{border-left:3px solid var(--s2);padding:2px 0 2px 14px;margin:14px 0;color:var(--mut);font-size:13.5px}
+ul.headline{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:8px}
+ul.headline li{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--s1);
+border-radius:0 8px 8px 0;padding:9px 14px;font-size:14px}
+.empty{color:var(--mut);font-size:13px;padding:30px;text-align:center}
+</style>
+</head><body>
+<main>
+<h1>RDFox scaling: one named graph per document subsection</h1>
+<p class="sub">
+15 size points up to 500,000 named graphs / 14,525,277 quads
+· 10 queries, 150ms blocks
+· <code>quad-table-sg-fi</code>, <code>quad-table-sg-pi</code>
+</p>
+<p class="sub">Dataset: 29.05 quads per graph,
+600-char provenance text, fanout 8.6,
+seed 42.</p>
+
+<ul class="headline"><li><b>quad-table-sg-pi</b> held the same 14,525,277 quads in 1.2 GB against 1.4 GB for quad-table-sg-fi — 12% less.</li><li>Memory scaled with exponent <b>0.83</b> (R² 0.981) — sub-linear, so cost per quad falls as the corpus grows. Marginal cost settled near 95 bytes/quad.</li><li><b>4 of 10</b> queries are constant-time — unchanged across a 51,876× increase in data, all under 40.1 µs at full size. That includes the point lookup the whole provenance pattern exists to serve.</li><li>Biggest divergence between storage types: <b>q03_graphs_mentioning_hub_entity</b>, where quad-table-sg-pi was 1.9× faster (154.0 ms vs 290.3 ms).</li></ul>
+
+<section class="summary">
+<div class="grid2">
+  <div class="card">
+    <h3>Memory vs corpus size</h3>
+    <p class="sub">how much RAM the pattern costs as it grows</p>
+    <div class="legend"><span class="key"><i style="background:var(--s1)"></i>quad-table-sg-fi</span><span class="key"><i style="background:var(--s2)"></i>quad-table-sg-pi</span></div><svg viewBox="0 0 620 380" class="chart" role="img"><defs><clipPath id="plot14"><rect x="66" y="16" width="538" height="320"/></clipPath></defs><line class="grid" x1="66" y1="266.4" x2="604" y2="266.4"/><text class="tick ty" x="58" y="269.9">1 MB</text><line class="grid" x1="66" y1="192.2" x2="604" y2="192.2"/><text class="tick ty" x="58" y="195.7">10 MB</text><line class="grid" x1="66" y1="117.9" x2="604" y2="117.9"/><text class="tick ty" x="58" y="121.4">100 MB</text><line class="grid" x1="66" y1="43.7" x2="604" y2="43.7"/><text class="tick ty" x="58" y="47.2">1 GB</text><line class="grid" x1="151.1" y1="16" x2="151.1" y2="336"/><text class="tick tx" x="151.1" y="352">1.0k</text><line class="grid" x1="253.0" y1="16" x2="253.0" y2="336"/><text class="tick tx" x="253.0" y="352">10k</text><line class="grid" x1="354.9" y1="16" x2="354.9" y2="336"/><text class="tick tx" x="354.9" y="352">100k</text><line class="grid" x1="456.8" y1="16" x2="456.8" y2="336"/><text class="tick tx" x="456.8" y="352">1.0M</text><line class="grid" x1="558.7" y1="16" x2="558.7" y2="336"/><text class="tick tx" x="558.7" y="352">10M</text><text class="axis tx" x="335" y="374">quads stored</text><text class="axis" transform="translate(13,176) rotate(-90)" text-anchor="middle">memory used</text><polyline class="fit" clip-path="url(#plot14)" style="stroke:var(--s1)" points="94.8,336.9 106.8,329.6 118.8,322.4 130.8,315.2 142.9,308.0 154.9,300.7 166.9,293.5 178.9,286.3 190.9,279.0 202.9,271.8 214.9,264.6 226.9,257.3 238.9,250.1 250.9,242.9 262.9,235.7 275.0,228.4 287.0,221.2 299.0,214.0 311.0,206.7 323.0,199.5 335.0,192.3 347.0,185.0 359.0,177.8 371.0,170.6 383.0,163.4 395.0,156.1 407.1,148.9 419.1,141.7 431.1,134.4 443.1,127.2 455.1,120.0 467.1,112.7 479.1,105.5 491.1,98.3 503.1,91.1 515.1,83.8 527.1,76.6 539.2,69.4 551.2,62.1 563.2,54.9 575.2,47.7"/><polyline class="link" style="stroke:var(--s1)" points="94.8,318.9 127.7,302.4 164.5,288.3 195.9,272.2 227.3,262.0 269.4,248.6 300.7,237.2 330.8,212.1 371.3,179.3 402.1,157.4 432.8,135.3 473.3,105.2 504.0,83.3 534.7,61.3 575.2,33.1"/><circle class="pt" style="fill:var(--s1)" cx="94.8" cy="318.9" r="3.4"><title>quad-table-sg-fi
+280 quads
+197 kB</title></circle><circle class="pt" style="fill:var(--s1)" cx="127.7" cy="302.4" r="3.4"><title>quad-table-sg-fi
+589 quads
+328 kB</title></circle><circle class="pt" style="fill:var(--s1)" cx="164.5" cy="288.3" r="3.4"><title>quad-table-sg-fi
+1.4k quads
+508 kB</title></circle><circle class="pt" style="fill:var(--s1)" cx="195.9" cy="272.2" r="3.4"><title>quad-table-sg-fi
+2.7k quads
+836 kB</title></circle><circle class="pt" style="fill:var(--s1)" cx="227.3" cy="262.0" r="3.4"><title>quad-table-sg-fi
+5.6k quads
+1.1 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="269.4" cy="248.6" r="3.4"><title>quad-table-sg-fi
+14k quads
+1.7 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="300.7" cy="237.2" r="3.4"><title>quad-table-sg-fi
+29k quads
+2.5 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="330.8" cy="212.1" r="3.4"><title>quad-table-sg-fi
+58k quads
+5.4 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="371.3" cy="179.3" r="3.4"><title>quad-table-sg-fi
+145k quads
+14.9 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="402.1" cy="157.4" r="3.4"><title>quad-table-sg-fi
+290k quads
+29.4 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="432.8" cy="135.3" r="3.4"><title>quad-table-sg-fi
+581k quads
+58.4 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="473.3" cy="105.2" r="3.4"><title>quad-table-sg-fi
+1.5M quads
+148 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="504.0" cy="83.3" r="3.4"><title>quad-table-sg-fi
+2.9M quads
+293 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="534.7" cy="61.3" r="3.4"><title>quad-table-sg-fi
+5.8M quads
+580 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="575.2" cy="33.1" r="3.4"><title>quad-table-sg-fi
+15M quads
+1.4 GB</title></circle><polyline class="fit" clip-path="url(#plot14)" style="stroke:var(--s2)" points="94.8,336.8 106.8,329.7 118.8,322.5 130.8,315.4 142.9,308.3 154.9,301.2 166.9,294.0 178.9,286.9 190.9,279.8 202.9,272.7 214.9,265.5 226.9,258.4 238.9,251.3 250.9,244.1 262.9,237.0 275.0,229.9 287.0,222.8 299.0,215.6 311.0,208.5 323.0,201.4 335.0,194.3 347.0,187.1 359.0,180.0 371.0,172.9 383.0,165.7 395.0,158.6 407.1,151.5 419.1,144.4 431.1,137.2 443.1,130.1 455.1,123.0 467.1,115.9 479.1,108.7 491.1,101.6 503.1,94.5 515.1,87.4 527.1,80.2 539.2,73.1 551.2,66.0 563.2,58.8 575.2,51.7"/><polyline class="link" style="stroke:var(--s2)" points="94.8,318.9 127.7,307.6 164.5,287.2 195.9,274.2 227.3,258.5 269.4,248.6 300.7,237.2 330.8,214.5 371.3,182.1 402.1,159.5 432.8,138.8 473.3,109.3 504.0,87.2 534.7,65.2 575.2,37.3"/><circle class="pt" style="fill:var(--s2)" cx="94.8" cy="318.9" r="3.4"><title>quad-table-sg-pi
+280 quads
+197 kB</title></circle><circle class="pt" style="fill:var(--s2)" cx="127.7" cy="307.6" r="3.4"><title>quad-table-sg-pi
+589 quads
+279 kB</title></circle><circle class="pt" style="fill:var(--s2)" cx="164.5" cy="287.2" r="3.4"><title>quad-table-sg-pi
+1.4k quads
+524 kB</title></circle><circle class="pt" style="fill:var(--s2)" cx="195.9" cy="274.2" r="3.4"><title>quad-table-sg-pi
+2.7k quads
+786 kB</title></circle><circle class="pt" style="fill:var(--s2)" cx="227.3" cy="258.5" r="3.4"><title>quad-table-sg-pi
+5.6k quads
+1.3 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="269.4" cy="248.6" r="3.4"><title>quad-table-sg-pi
+14k quads
+1.7 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="300.7" cy="237.2" r="3.4"><title>quad-table-sg-pi
+29k quads
+2.5 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="330.8" cy="214.5" r="3.4"><title>quad-table-sg-pi
+58k quads
+5 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="371.3" cy="182.1" r="3.4"><title>quad-table-sg-pi
+145k quads
+13.6 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="402.1" cy="159.5" r="3.4"><title>quad-table-sg-pi
+290k quads
+27.5 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="432.8" cy="138.8" r="3.4"><title>quad-table-sg-pi
+581k quads
+52.4 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="473.3" cy="109.3" r="3.4"><title>quad-table-sg-pi
+1.5M quads
+131 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="504.0" cy="87.2" r="3.4"><title>quad-table-sg-pi
+2.9M quads
+260 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="534.7" cy="65.2" r="3.4"><title>quad-table-sg-pi
+5.8M quads
+513 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="575.2" cy="37.3" r="3.4"><title>quad-table-sg-pi
+15M quads
+1.2 GB</title></circle></svg><p class="note">Solid = measured, dashed = fitted power law. Net of the 3.3 MB an empty store already holds.</p>
+    <p class="takeaway">Storing 14,525,277 quads across
+    500,000 named graphs cost <b>1.4 GB</b>
+    on <code>quad-table-sg-fi</code>. Growth is <b>sub-linear</b>
+    (exponent 0.83): the marginal cost fell to
+    <b>95 bytes
+    per quad</b> as the shared dictionary amortised.</p>
+  </div>
+  <div class="card">
+    <h3>Query time vs corpus size</h3>
+    <p class="sub">all 10 queries, one line each</p>
+    <svg viewBox="0 0 620 380" class="chart" role="img"><defs><clipPath id="plot15"><rect x="66" y="16" width="422" height="320"/></clipPath></defs><line class="grid" x1="66" y1="298.6" x2="488" y2="298.6"/><text class="tick ty" x="58" y="302.1">10 µs</text><line class="grid" x1="66" y1="239.1" x2="488" y2="239.1"/><text class="tick ty" x="58" y="242.6">100 µs</text><line class="grid" x1="66" y1="179.6" x2="488" y2="179.6"/><text class="tick ty" x="58" y="183.1">1 ms</text><line class="grid" x1="66" y1="120.2" x2="488" y2="120.2"/><text class="tick ty" x="58" y="123.7">10 ms</text><line class="grid" x1="66" y1="60.7" x2="488" y2="60.7"/><text class="tick ty" x="58" y="64.2">100 ms</text><line class="grid" x1="132.8" y1="16" x2="132.8" y2="336"/><text class="tick tx" x="132.8" y="352">1.0k</text><line class="grid" x1="212.7" y1="16" x2="212.7" y2="336"/><text class="tick tx" x="212.7" y="352">10k</text><line class="grid" x1="292.6" y1="16" x2="292.6" y2="336"/><text class="tick tx" x="292.6" y="352">100k</text><line class="grid" x1="372.5" y1="16" x2="372.5" y2="336"/><text class="tick tx" x="372.5" y="352">1.0M</text><line class="grid" x1="452.4" y1="16" x2="452.4" y2="336"/><text class="tick tx" x="452.4" y="352">10M</text><text class="axis tx" x="277" y="374">quads stored</text><text class="axis" transform="translate(13,176) rotate(-90)" text-anchor="middle">time per execution</text><polyline class="link" style="stroke:var(--s3)" points="88.6,299.3 114.4,297.5 143.2,295.7 167.9,297.0 192.5,298.7 225.5,293.9 250.1,297.0 273.7,297.9 305.5,299.5 329.6,293.9 353.7,294.8 385.5,297.9 409.5,293.4 433.6,298.0 465.4,318.9"/><circle class="pt" style="fill:var(--s3)" cx="88.6" cy="299.3" r="3.4"><title>q02_contents_of_one_graph
+280 quads
+9.73078 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="114.4" cy="297.5" r="3.4"><title>q02_contents_of_one_graph
+589 quads
+10.4531 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="143.2" cy="295.7" r="3.4"><title>q02_contents_of_one_graph
+1.4k quads
+11.1994 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="167.9" cy="297.0" r="3.4"><title>q02_contents_of_one_graph
+2.7k quads
+10.655 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="192.5" cy="298.7" r="3.4"><title>q02_contents_of_one_graph
+5.6k quads
+9.98057 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="225.5" cy="293.9" r="3.4"><title>q02_contents_of_one_graph
+14k quads
+11.9806 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="250.1" cy="297.0" r="3.4"><title>q02_contents_of_one_graph
+29k quads
+10.647 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="273.7" cy="297.9" r="3.4"><title>q02_contents_of_one_graph
+58k quads
+10.2854 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="305.5" cy="299.5" r="3.4"><title>q02_contents_of_one_graph
+145k quads
+9.67134 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="329.6" cy="293.9" r="3.4"><title>q02_contents_of_one_graph
+290k quads
+12.0161 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="353.7" cy="294.8" r="3.4"><title>q02_contents_of_one_graph
+581k quads
+11.5795 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="385.5" cy="297.9" r="3.4"><title>q02_contents_of_one_graph
+1.5M quads
+10.2769 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="409.5" cy="293.4" r="3.4"><title>q02_contents_of_one_graph
+2.9M quads
+12.2397 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="433.6" cy="298.0" r="3.4"><title>q02_contents_of_one_graph
+5.8M quads
+10.2371 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="465.4" cy="318.9" r="3.4"><title>q02_contents_of_one_graph
+15M quads
+4.5654 µs</title></circle><polyline class="link" style="stroke:var(--s3)" points="88.6,276.0 114.4,277.0 143.2,278.8 167.9,277.1 192.5,277.8 225.5,276.9 250.1,277.4 273.7,277.0 305.5,277.3 329.6,272.4 353.7,276.5 385.5,278.5 409.5,275.5 433.6,277.7 465.4,290.1"/><circle class="pt" style="fill:var(--s3)" cx="88.6" cy="276.0" r="3.4"><title>q01_provenance_of_one_triple
+280 quads
+24.0303 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="114.4" cy="277.0" r="3.4"><title>q01_provenance_of_one_triple
+589 quads
+23.0611 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="143.2" cy="278.8" r="3.4"><title>q01_provenance_of_one_triple
+1.4k quads
+21.4956 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="167.9" cy="277.1" r="3.4"><title>q01_provenance_of_one_triple
+2.7k quads
+22.9707 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="192.5" cy="277.8" r="3.4"><title>q01_provenance_of_one_triple
+5.6k quads
+22.3984 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="225.5" cy="276.9" r="3.4"><title>q01_provenance_of_one_triple
+14k quads
+23.1857 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="250.1" cy="277.4" r="3.4"><title>q01_provenance_of_one_triple
+29k quads
+22.7159 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="273.7" cy="277.0" r="3.4"><title>q01_provenance_of_one_triple
+58k quads
+23.0544 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="305.5" cy="277.3" r="3.4"><title>q01_provenance_of_one_triple
+145k quads
+22.8045 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="329.6" cy="272.4" r="3.4"><title>q01_provenance_of_one_triple
+290k quads
+27.5913 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="353.7" cy="276.5" r="3.4"><title>q01_provenance_of_one_triple
+581k quads
+23.5698 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="385.5" cy="278.5" r="3.4"><title>q01_provenance_of_one_triple
+1.5M quads
+21.7446 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="409.5" cy="275.5" r="3.4"><title>q01_provenance_of_one_triple
+2.9M quads
+24.4876 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="433.6" cy="277.7" r="3.4"><title>q01_provenance_of_one_triple
+5.8M quads
+22.4775 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="465.4" cy="290.1" r="3.4"><title>q01_provenance_of_one_triple
+15M quads
+13.88 µs</title></circle><polyline class="link" style="stroke:var(--s3)" points="88.6,287.1 114.4,282.4 143.2,286.8 167.9,284.0 192.5,284.6 225.5,283.6 250.1,282.8 273.7,284.0 305.5,283.9 329.6,283.5 353.7,280.5 385.5,280.6 409.5,284.3 433.6,285.8 465.4,262.8"/><circle class="pt" style="fill:var(--s3)" cx="88.6" cy="287.1" r="3.4"><title>q10_subtree_extraction
+280 quads
+15.6009 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="114.4" cy="282.4" r="3.4"><title>q10_subtree_extraction
+589 quads
+18.7031 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="143.2" cy="286.8" r="3.4"><title>q10_subtree_extraction
+1.4k quads
+15.796 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="167.9" cy="284.0" r="3.4"><title>q10_subtree_extraction
+2.7k quads
+17.6102 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="192.5" cy="284.6" r="3.4"><title>q10_subtree_extraction
+5.6k quads
+17.1887 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="225.5" cy="283.6" r="3.4"><title>q10_subtree_extraction
+14k quads
+17.8763 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="250.1" cy="282.8" r="3.4"><title>q10_subtree_extraction
+29k quads
+18.41 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="273.7" cy="284.0" r="3.4"><title>q10_subtree_extraction
+58k quads
+17.5674 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="305.5" cy="283.9" r="3.4"><title>q10_subtree_extraction
+145k quads
+17.6656 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="329.6" cy="283.5" r="3.4"><title>q10_subtree_extraction
+290k quads
+17.9185 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="353.7" cy="280.5" r="3.4"><title>q10_subtree_extraction
+581k quads
+20.1539 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="385.5" cy="280.6" r="3.4"><title>q10_subtree_extraction
+1.5M quads
+20.1104 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="409.5" cy="284.3" r="3.4"><title>q10_subtree_extraction
+2.9M quads
+17.386 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="433.6" cy="285.8" r="3.4"><title>q10_subtree_extraction
+5.8M quads
+16.4014 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="465.4" cy="262.8" r="3.4"><title>q10_subtree_extraction
+15M quads
+40.0329 µs</title></circle><polyline class="link" style="stroke:var(--s3)" points="88.6,255.3 114.4,256.5 143.2,256.8 167.9,256.6 192.5,256.5 225.5,256.3 250.1,256.3 273.7,256.1 305.5,256.6 329.6,254.6 353.7,255.5 385.5,256.8 409.5,255.7 433.6,256.6 465.4,262.7"/><circle class="pt" style="fill:var(--s3)" cx="88.6" cy="255.3" r="3.4"><title>q05_ancestor_chain
+280 quads
+53.5529 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="114.4" cy="256.5" r="3.4"><title>q05_ancestor_chain
+589 quads
+51.0659 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="143.2" cy="256.8" r="3.4"><title>q05_ancestor_chain
+1.4k quads
+50.5219 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="167.9" cy="256.6" r="3.4"><title>q05_ancestor_chain
+2.7k quads
+50.8065 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="192.5" cy="256.5" r="3.4"><title>q05_ancestor_chain
+5.6k quads
+51.0464 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="225.5" cy="256.3" r="3.4"><title>q05_ancestor_chain
+14k quads
+51.4642 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="250.1" cy="256.3" r="3.4"><title>q05_ancestor_chain
+29k quads
+51.423 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="273.7" cy="256.1" r="3.4"><title>q05_ancestor_chain
+58k quads
+51.7809 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="305.5" cy="256.6" r="3.4"><title>q05_ancestor_chain
+145k quads
+50.8135 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="329.6" cy="254.6" r="3.4"><title>q05_ancestor_chain
+290k quads
+54.8423 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="353.7" cy="255.5" r="3.4"><title>q05_ancestor_chain
+581k quads
+53.0226 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="385.5" cy="256.8" r="3.4"><title>q05_ancestor_chain
+1.5M quads
+50.3849 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="409.5" cy="255.7" r="3.4"><title>q05_ancestor_chain
+2.9M quads
+52.6121 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="433.6" cy="256.6" r="3.4"><title>q05_ancestor_chain
+5.8M quads
+50.8767 µs</title></circle><circle class="pt" style="fill:var(--s3)" cx="465.4" cy="262.7" r="3.4"><title>q05_ancestor_chain
+15M quads
+40.1284 µs</title></circle><polyline class="link" style="stroke:var(--s2)" points="88.6,275.0 114.4,270.7 143.2,267.6 167.9,263.0 192.5,236.4 225.5,200.3 250.1,197.3 273.7,195.7 305.5,195.8 329.6,195.6 353.7,193.9 385.5,193.7 409.5,187.0 433.6,185.8 465.4,166.9"/><circle class="pt" style="fill:var(--s2)" cx="88.6" cy="275.0" r="3.4"><title>q06_cross_graph_two_hop
+280 quads
+24.9108 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="114.4" cy="270.7" r="3.4"><title>q06_cross_graph_two_hop
+589 quads
+29.3994 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="143.2" cy="267.6" r="3.4"><title>q06_cross_graph_two_hop
+1.4k quads
+33.1696 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="167.9" cy="263.0" r="3.4"><title>q06_cross_graph_two_hop
+2.7k quads
+39.6765 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="192.5" cy="236.4" r="3.4"><title>q06_cross_graph_two_hop
+5.6k quads
+111.069 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="225.5" cy="200.3" r="3.4"><title>q06_cross_graph_two_hop
+14k quads
+449.287 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="250.1" cy="197.3" r="3.4"><title>q06_cross_graph_two_hop
+29k quads
+504.776 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="273.7" cy="195.7" r="3.4"><title>q06_cross_graph_two_hop
+58k quads
+536.388 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="305.5" cy="195.8" r="3.4"><title>q06_cross_graph_two_hop
+145k quads
+533.969 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="329.6" cy="195.6" r="3.4"><title>q06_cross_graph_two_hop
+290k quads
+538.078 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="353.7" cy="193.9" r="3.4"><title>q06_cross_graph_two_hop
+581k quads
+575.966 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="385.5" cy="193.7" r="3.4"><title>q06_cross_graph_two_hop
+1.5M quads
+579.534 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="409.5" cy="187.0" r="3.4"><title>q06_cross_graph_two_hop
+2.9M quads
+750.851 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="433.6" cy="185.8" r="3.4"><title>q06_cross_graph_two_hop
+5.8M quads
+788.917 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="465.4" cy="166.9" r="3.4"><title>q06_cross_graph_two_hop
+15M quads
+1.63427 ms</title></circle><polyline class="link" style="stroke:var(--s2)" points="88.6,298.6 114.4,293.8 143.2,294.0 167.9,283.8 192.5,276.4 225.5,258.3 250.1,241.6 273.7,225.4 305.5,202.7 329.6,183.5 353.7,159.3 385.5,158.2 409.5,157.6 433.6,150.5 465.4,152.9"/><circle class="pt" style="fill:var(--s2)" cx="88.6" cy="298.6" r="3.4"><title>q08_class_with_provenance
+280 quads
+9.9892 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="114.4" cy="293.8" r="3.4"><title>q08_class_with_provenance
+589 quads
+12.031 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="143.2" cy="294.0" r="3.4"><title>q08_class_with_provenance
+1.4k quads
+11.9569 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="167.9" cy="283.8" r="3.4"><title>q08_class_with_provenance
+2.7k quads
+17.7263 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="192.5" cy="276.4" r="3.4"><title>q08_class_with_provenance
+5.6k quads
+23.6306 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="225.5" cy="258.3" r="3.4"><title>q08_class_with_provenance
+14k quads
+47.651 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="250.1" cy="241.6" r="3.4"><title>q08_class_with_provenance
+29k quads
+90.9134 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="273.7" cy="225.4" r="3.4"><title>q08_class_with_provenance
+58k quads
+170.325 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="305.5" cy="202.7" r="3.4"><title>q08_class_with_provenance
+145k quads
+409.653 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="329.6" cy="183.5" r="3.4"><title>q08_class_with_provenance
+290k quads
+862.568 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="353.7" cy="159.3" r="3.4"><title>q08_class_with_provenance
+581k quads
+2.19324 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="385.5" cy="158.2" r="3.4"><title>q08_class_with_provenance
+1.5M quads
+2.28849 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="409.5" cy="157.6" r="3.4"><title>q08_class_with_provenance
+2.9M quads
+2.34607 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="433.6" cy="150.5" r="3.4"><title>q08_class_with_provenance
+5.8M quads
+3.09279 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="465.4" cy="152.9" r="3.4"><title>q08_class_with_provenance
+15M quads
+2.81869 ms</title></circle><polyline class="link" style="stroke:var(--s2)" points="88.6,283.5 114.4,278.9 143.2,279.5 167.9,272.2 192.5,264.6 225.5,247.0 250.1,233.2 273.7,218.0 305.5,196.1 329.6,178.6 353.7,160.5 385.5,137.2 409.5,119.5 433.6,101.5 465.4,78.1"/><circle class="pt" style="fill:var(--s2)" cx="88.6" cy="283.5" r="3.4"><title>q09_total_quads
+280 quads
+17.9658 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="114.4" cy="278.9" r="3.4"><title>q09_total_quads
+589 quads
+21.481 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="143.2" cy="279.5" r="3.4"><title>q09_total_quads
+1.4k quads
+20.9764 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="167.9" cy="272.2" r="3.4"><title>q09_total_quads
+2.7k quads
+27.839 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="192.5" cy="264.6" r="3.4"><title>q09_total_quads
+5.6k quads
+37.2945 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="225.5" cy="247.0" r="3.4"><title>q09_total_quads
+14k quads
+73.648 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="250.1" cy="233.2" r="3.4"><title>q09_total_quads
+29k quads
+125.546 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="273.7" cy="218.0" r="3.4"><title>q09_total_quads
+58k quads
+226.404 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="305.5" cy="196.1" r="3.4"><title>q09_total_quads
+145k quads
+529.217 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="329.6" cy="178.6" r="3.4"><title>q09_total_quads
+290k quads
+1.04178 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="353.7" cy="160.5" r="3.4"><title>q09_total_quads
+581k quads
+2.09962 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="385.5" cy="137.2" r="3.4"><title>q09_total_quads
+1.5M quads
+5.16115 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="409.5" cy="119.5" r="3.4"><title>q09_total_quads
+2.9M quads
+10.2691 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="433.6" cy="101.5" r="3.4"><title>q09_total_quads
+5.8M quads
+20.5845 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="465.4" cy="78.1" r="3.4"><title>q09_total_quads
+15M quads
+50.8751 ms</title></circle><polyline class="link" style="stroke:var(--s2)" points="88.6,263.3 114.4,261.5 143.2,256.1 167.9,250.0 192.5,241.0 225.5,226.4 250.1,211.7 273.7,197.3 305.5,175.6 329.6,157.2 353.7,129.3 385.5,113.2 409.5,95.0 433.6,77.1 465.4,53.9"/><circle class="pt" style="fill:var(--s2)" cx="88.6" cy="263.3" r="3.4"><title>q04_quads_per_document
+280 quads
+39.2796 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="114.4" cy="261.5" r="3.4"><title>q04_quads_per_document
+589 quads
+42.0271 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="143.2" cy="256.1" r="3.4"><title>q04_quads_per_document
+1.4k quads
+51.8909 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="167.9" cy="250.0" r="3.4"><title>q04_quads_per_document
+2.7k quads
+65.5439 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="192.5" cy="241.0" r="3.4"><title>q04_quads_per_document
+5.6k quads
+92.8975 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="225.5" cy="226.4" r="3.4"><title>q04_quads_per_document
+14k quads
+163.732 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="250.1" cy="211.7" r="3.4"><title>q04_quads_per_document
+29k quads
+288.914 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="273.7" cy="197.3" r="3.4"><title>q04_quads_per_document
+58k quads
+503.985 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="305.5" cy="175.6" r="3.4"><title>q04_quads_per_document
+145k quads
+1.16868 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="329.6" cy="157.2" r="3.4"><title>q04_quads_per_document
+290k quads
+2.38363 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="353.7" cy="129.3" r="3.4"><title>q04_quads_per_document
+581k quads
+7.02802 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="385.5" cy="113.2" r="3.4"><title>q04_quads_per_document
+1.5M quads
+13.073 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="409.5" cy="95.0" r="3.4"><title>q04_quads_per_document
+2.9M quads
+26.4354 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="433.6" cy="77.1" r="3.4"><title>q04_quads_per_document
+5.8M quads
+52.8916 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="465.4" cy="53.9" r="3.4"><title>q04_quads_per_document
+15M quads
+130.114 ms</title></circle><polyline class="link" style="stroke:var(--s2)" points="88.6,279.4 114.4,277.5 143.2,268.8 167.9,255.7 192.5,238.9 225.5,217.7 250.1,201.3 273.7,183.5 305.5,160.1 329.6,138.8 353.7,121.2 385.5,94.5 409.5,75.8 433.6,57.4 465.4,36.3"/><circle class="pt" style="fill:var(--s2)" cx="88.6" cy="279.4" r="3.4"><title>q07_text_search
+280 quads
+21.0341 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="114.4" cy="277.5" r="3.4"><title>q07_text_search
+589 quads
+22.6732 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="143.2" cy="268.8" r="3.4"><title>q07_text_search
+1.4k quads
+31.7095 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="167.9" cy="255.7" r="3.4"><title>q07_text_search
+2.7k quads
+52.6985 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="192.5" cy="238.9" r="3.4"><title>q07_text_search
+5.6k quads
+100.737 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="225.5" cy="217.7" r="3.4"><title>q07_text_search
+14k quads
+229.116 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="250.1" cy="201.3" r="3.4"><title>q07_text_search
+29k quads
+432.41 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="273.7" cy="183.5" r="3.4"><title>q07_text_search
+58k quads
+860.996 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="305.5" cy="160.1" r="3.4"><title>q07_text_search
+145k quads
+2.13116 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="329.6" cy="138.8" r="3.4"><title>q07_text_search
+290k quads
+4.85815 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="353.7" cy="121.2" r="3.4"><title>q07_text_search
+581k quads
+9.60901 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="385.5" cy="94.5" r="3.4"><title>q07_text_search
+1.5M quads
+27.0047 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="409.5" cy="75.8" r="3.4"><title>q07_text_search
+2.9M quads
+55.6537 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="433.6" cy="57.4" r="3.4"><title>q07_text_search
+5.8M quads
+113.45 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="465.4" cy="36.3" r="3.4"><title>q07_text_search
+15M quads
+256.416 ms</title></circle><polyline class="link" style="stroke:var(--s2)" points="88.6,287.5 114.4,282.2 143.2,279.8 167.9,269.1 192.5,255.0 225.5,237.9 250.1,221.1 273.7,205.0 305.5,179.3 329.6,157.8 353.7,135.3 385.5,105.7 409.5,81.4 433.6,59.6 465.4,33.1"/><circle class="pt" style="fill:var(--s2)" cx="88.6" cy="287.5" r="3.4"><title>q03_graphs_mentioning_hub_entity
+280 quads
+15.3793 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="114.4" cy="282.2" r="3.4"><title>q03_graphs_mentioning_hub_entity
+589 quads
+18.8985 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="143.2" cy="279.8" r="3.4"><title>q03_graphs_mentioning_hub_entity
+1.4k quads
+20.7349 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="167.9" cy="269.1" r="3.4"><title>q03_graphs_mentioning_hub_entity
+2.7k quads
+31.3086 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="192.5" cy="255.0" r="3.4"><title>q03_graphs_mentioning_hub_entity
+5.6k quads
+54.1733 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="225.5" cy="237.9" r="3.4"><title>q03_graphs_mentioning_hub_entity
+14k quads
+104.635 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="250.1" cy="221.1" r="3.4"><title>q03_graphs_mentioning_hub_entity
+29k quads
+200.55 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="273.7" cy="205.0" r="3.4"><title>q03_graphs_mentioning_hub_entity
+58k quads
+374.662 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="305.5" cy="179.3" r="3.4"><title>q03_graphs_mentioning_hub_entity
+145k quads
+1.0138 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="329.6" cy="157.8" r="3.4"><title>q03_graphs_mentioning_hub_entity
+290k quads
+2.32862 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="353.7" cy="135.3" r="3.4"><title>q03_graphs_mentioning_hub_entity
+581k quads
+5.56758 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="385.5" cy="105.7" r="3.4"><title>q03_graphs_mentioning_hub_entity
+1.5M quads
+17.5124 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="409.5" cy="81.4" r="3.4"><title>q03_graphs_mentioning_hub_entity
+2.9M quads
+44.8734 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="433.6" cy="59.6" r="3.4"><title>q03_graphs_mentioning_hub_entity
+5.8M quads
+104.095 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="465.4" cy="33.1" r="3.4"><title>q03_graphs_mentioning_hub_entity
+15M quads
+290.256 ms</title></circle><line class="leader" x1="469.4" y1="33.1" x2="492.0" y2="33.1" style="stroke:var(--s2)"/><text class="endlab" x="496.0" y="36.6" style="fill:var(--s2)">q03</text><line class="leader" x1="469.4" y1="45.1" x2="492.0" y2="45.1" style="stroke:var(--s2)"/><text class="endlab" x="496.0" y="48.6" style="fill:var(--s2)">q07</text><line class="leader" x1="469.4" y1="57.1" x2="492.0" y2="57.1" style="stroke:var(--s2)"/><text class="endlab" x="496.0" y="60.6" style="fill:var(--s2)">q04</text><line class="leader" x1="469.4" y1="78.1" x2="492.0" y2="78.1" style="stroke:var(--s2)"/><text class="endlab" x="496.0" y="81.6" style="fill:var(--s2)">q09</text><line class="leader" x1="469.4" y1="152.9" x2="492.0" y2="152.9" style="stroke:var(--s2)"/><text class="endlab" x="496.0" y="156.4" style="fill:var(--s2)">q08</text><line class="leader" x1="469.4" y1="166.9" x2="492.0" y2="166.9" style="stroke:var(--s2)"/><text class="endlab" x="496.0" y="170.4" style="fill:var(--s2)">q06</text><line class="leader" x1="469.4" y1="262.7" x2="492.0" y2="262.7" style="stroke:var(--s3)"/><text class="endlab" x="496.0" y="266.2" style="fill:var(--s3)">q05</text><line class="leader" x1="469.4" y1="274.7" x2="492.0" y2="274.7" style="stroke:var(--s3)"/><text class="endlab" x="496.0" y="278.2" style="fill:var(--s3)">q10</text><line class="leader" x1="469.4" y1="290.1" x2="492.0" y2="290.1" style="stroke:var(--s3)"/><text class="endlab" x="496.0" y="293.6" style="fill:var(--s3)">q01</text><line class="leader" x1="469.4" y1="318.9" x2="492.0" y2="318.9" style="stroke:var(--s3)"/><text class="endlab" x="496.0" y="322.4" style="fill:var(--s3)">q02</text></svg><p class="note"><span style="color:var(--s3)">■</span> constant-time (4) &nbsp; <span style="color:var(--s2)">■</span> grows with the corpus (6) &nbsp;·&nbsp; quad-table-sg-fi, log–log</p>
+    <p class="takeaway">The queries split cleanly in two.
+    <b>4 are constant-time</b> — unchanged across a
+    51,876× increase in data, still under 40.1 µs. The
+    other <b>6 grow with the corpus</b> but all sub-linearly
+    (exponents 0.37–0.95), topping out at 290.3 ms.</p>
+  </div>
+</div>
+</section>
+
+<h2>Memory</h2>
+<div class="grid2">
+  <div class="card"><h3>Memory vs data size</h3><p class="sub">both axes log</p><div class="legend"><span class="key"><i style="background:var(--s1)"></i>quad-table-sg-fi</span><span class="key"><i style="background:var(--s2)"></i>quad-table-sg-pi</span></div><svg viewBox="0 0 560 330" class="chart" role="img"><defs><clipPath id="plot1"><rect x="66" y="16" width="478" height="270"/></clipPath></defs><line class="grid" x1="66" y1="227.3" x2="544" y2="227.3"/><text class="tick ty" x="58" y="230.8">1 MB</text><line class="grid" x1="66" y1="164.6" x2="544" y2="164.6"/><text class="tick ty" x="58" y="168.1">10 MB</text><line class="grid" x1="66" y1="102.0" x2="544" y2="102.0"/><text class="tick ty" x="58" y="105.5">100 MB</text><line class="grid" x1="66" y1="39.3" x2="544" y2="39.3"/><text class="tick ty" x="58" y="42.8">1 GB</text><line class="grid" x1="141.6" y1="16" x2="141.6" y2="286"/><text class="tick tx" x="141.6" y="302">1.0k</text><line class="grid" x1="232.2" y1="16" x2="232.2" y2="286"/><text class="tick tx" x="232.2" y="302">10k</text><line class="grid" x1="322.7" y1="16" x2="322.7" y2="286"/><text class="tick tx" x="322.7" y="302">100k</text><line class="grid" x1="413.2" y1="16" x2="413.2" y2="286"/><text class="tick tx" x="413.2" y="302">1.0M</text><line class="grid" x1="503.7" y1="16" x2="503.7" y2="286"/><text class="tick tx" x="503.7" y="302">10M</text><text class="axis tx" x="305" y="324">quads stored</text><text class="axis" transform="translate(13,151) rotate(-90)" text-anchor="middle">memory (bytes)</text><polyline class="fit" clip-path="url(#plot1)" style="stroke:var(--s1)" points="91.6,286.7 102.3,280.6 112.9,274.5 123.6,268.4 134.3,262.3 145.0,256.2 155.6,250.1 166.3,244.0 177.0,237.9 187.6,231.8 198.3,225.7 209.0,219.6 219.6,213.5 230.3,207.4 241.0,201.3 251.7,195.2 262.3,189.1 273.0,183.0 283.7,176.9 294.3,170.8 305.0,164.7 315.7,158.6 326.3,152.5 337.0,146.4 347.7,140.3 358.3,134.2 369.0,128.1 379.7,122.0 390.4,115.9 401.0,109.8 411.7,103.7 422.4,97.6 433.0,91.5 443.7,85.4 454.4,79.3 465.0,73.2 475.7,67.1 486.4,61.0 497.1,54.9 507.7,48.8 518.4,42.7"/><polyline class="link" style="stroke:var(--s1)" points="91.6,271.5 120.8,257.6 153.5,245.7 181.4,232.2 209.3,223.6 246.7,212.3 274.5,202.6 301.3,181.5 337.3,153.8 364.6,135.3 391.9,116.6 427.9,91.3 455.1,72.8 482.4,54.2 518.4,30.5"/><circle class="pt" style="fill:var(--s1)" cx="91.6" cy="271.5" r="3.4"><title>quad-table-sg-fi
+280 quads
+197 kB</title></circle><circle class="pt" style="fill:var(--s1)" cx="120.8" cy="257.6" r="3.4"><title>quad-table-sg-fi
+589 quads
+328 kB</title></circle><circle class="pt" style="fill:var(--s1)" cx="153.5" cy="245.7" r="3.4"><title>quad-table-sg-fi
+1.4k quads
+508 kB</title></circle><circle class="pt" style="fill:var(--s1)" cx="181.4" cy="232.2" r="3.4"><title>quad-table-sg-fi
+2.7k quads
+836 kB</title></circle><circle class="pt" style="fill:var(--s1)" cx="209.3" cy="223.6" r="3.4"><title>quad-table-sg-fi
+5.6k quads
+1.1 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="246.7" cy="212.3" r="3.4"><title>quad-table-sg-fi
+14k quads
+1.7 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="274.5" cy="202.6" r="3.4"><title>quad-table-sg-fi
+29k quads
+2.5 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="301.3" cy="181.5" r="3.4"><title>quad-table-sg-fi
+58k quads
+5.4 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="337.3" cy="153.8" r="3.4"><title>quad-table-sg-fi
+145k quads
+14.9 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="364.6" cy="135.3" r="3.4"><title>quad-table-sg-fi
+290k quads
+29.4 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="391.9" cy="116.6" r="3.4"><title>quad-table-sg-fi
+581k quads
+58.4 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="427.9" cy="91.3" r="3.4"><title>quad-table-sg-fi
+1.5M quads
+148 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="455.1" cy="72.8" r="3.4"><title>quad-table-sg-fi
+2.9M quads
+293 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="482.4" cy="54.2" r="3.4"><title>quad-table-sg-fi
+5.8M quads
+580 MB</title></circle><circle class="pt" style="fill:var(--s1)" cx="518.4" cy="30.5" r="3.4"><title>quad-table-sg-fi
+15M quads
+1.4 GB</title></circle><polyline class="fit" clip-path="url(#plot1)" style="stroke:var(--s2)" points="91.6,286.7 102.3,280.7 112.9,274.6 123.6,268.6 134.3,262.6 145.0,256.6 155.6,250.6 166.3,244.6 177.0,238.6 187.6,232.6 198.3,226.5 209.0,220.5 219.6,214.5 230.3,208.5 241.0,202.5 251.7,196.5 262.3,190.5 273.0,184.4 283.7,178.4 294.3,172.4 305.0,166.4 315.7,160.4 326.3,154.4 337.0,148.4 347.7,142.4 358.3,136.3 369.0,130.3 379.7,124.3 390.4,118.3 401.0,112.3 411.7,106.3 422.4,100.3 433.0,94.2 443.7,88.2 454.4,82.2 465.0,76.2 475.7,70.2 486.4,64.2 497.1,58.2 507.7,52.1 518.4,46.1"/><polyline class="link" style="stroke:var(--s2)" points="91.6,271.5 120.8,262.1 153.5,244.9 181.4,233.8 209.3,220.6 246.7,212.3 274.5,202.6 301.3,183.5 337.3,156.2 364.6,137.1 391.9,119.6 427.9,94.7 455.1,76.0 482.4,57.5 518.4,34.0"/><circle class="pt" style="fill:var(--s2)" cx="91.6" cy="271.5" r="3.4"><title>quad-table-sg-pi
+280 quads
+197 kB</title></circle><circle class="pt" style="fill:var(--s2)" cx="120.8" cy="262.1" r="3.4"><title>quad-table-sg-pi
+589 quads
+279 kB</title></circle><circle class="pt" style="fill:var(--s2)" cx="153.5" cy="244.9" r="3.4"><title>quad-table-sg-pi
+1.4k quads
+524 kB</title></circle><circle class="pt" style="fill:var(--s2)" cx="181.4" cy="233.8" r="3.4"><title>quad-table-sg-pi
+2.7k quads
+786 kB</title></circle><circle class="pt" style="fill:var(--s2)" cx="209.3" cy="220.6" r="3.4"><title>quad-table-sg-pi
+5.6k quads
+1.3 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="246.7" cy="212.3" r="3.4"><title>quad-table-sg-pi
+14k quads
+1.7 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="274.5" cy="202.6" r="3.4"><title>quad-table-sg-pi
+29k quads
+2.5 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="301.3" cy="183.5" r="3.4"><title>quad-table-sg-pi
+58k quads
+5 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="337.3" cy="156.2" r="3.4"><title>quad-table-sg-pi
+145k quads
+13.6 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="364.6" cy="137.1" r="3.4"><title>quad-table-sg-pi
+290k quads
+27.5 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="391.9" cy="119.6" r="3.4"><title>quad-table-sg-pi
+581k quads
+52.4 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="427.9" cy="94.7" r="3.4"><title>quad-table-sg-pi
+1.5M quads
+131 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="455.1" cy="76.0" r="3.4"><title>quad-table-sg-pi
+2.9M quads
+260 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="482.4" cy="57.5" r="3.4"><title>quad-table-sg-pi
+5.8M quads
+513 MB</title></circle><circle class="pt" style="fill:var(--s2)" cx="518.4" cy="34.0" r="3.4"><title>quad-table-sg-pi
+15M quads
+1.2 GB</title></circle></svg><p class="note">net of the empty-store baseline  ·  dashed = fitted power law  ·  quad-table-sg-fi: exponent 0.83 (sub-linear), R² 0.981  ·  quad-table-sg-pi: exponent 0.81 (sub-linear), R² 0.982</p></div>
+  <div class="card"><h3>Marginal cost</h3><p class="sub">bytes per stored quad</p><div class="legend"><span class="key"><i style="background:var(--s1)"></i>quad-table-sg-fi</span><span class="key"><i style="background:var(--s2)"></i>quad-table-sg-pi</span></div><svg viewBox="0 0 560 330" class="chart" role="img"><defs><clipPath id="plot2"><rect x="66" y="16" width="478" height="270"/></clipPath></defs><line class="grid" x1="66" y1="226.3" x2="544" y2="226.3"/><text class="tick ty" x="58" y="229.8">200</text><line class="grid" x1="66" y1="148.3" x2="544" y2="148.3"/><text class="tick ty" x="58" y="151.8">400</text><line class="grid" x1="66" y1="70.3" x2="544" y2="70.3"/><text class="tick ty" x="58" y="73.8">600</text><line class="grid" x1="141.6" y1="16" x2="141.6" y2="286"/><text class="tick tx" x="141.6" y="302">1.0k</text><line class="grid" x1="232.2" y1="16" x2="232.2" y2="286"/><text class="tick tx" x="232.2" y="302">10k</text><line class="grid" x1="322.7" y1="16" x2="322.7" y2="286"/><text class="tick tx" x="322.7" y="302">100k</text><line class="grid" x1="413.2" y1="16" x2="413.2" y2="286"/><text class="tick tx" x="413.2" y="302">1.0M</text><line class="grid" x1="503.7" y1="16" x2="503.7" y2="286"/><text class="tick tx" x="503.7" y="302">10M</text><text class="axis tx" x="305" y="324">quads stored</text><text class="axis" transform="translate(13,151) rotate(-90)" text-anchor="middle">bytes per quad</text><polyline class="link" style="stroke:var(--s1)" points="91.6,30.5 120.8,87.3 153.5,157.7 181.4,185.7 209.3,224.2 246.7,257.5 274.5,271.4 301.3,268.0 337.3,264.2 364.6,264.8 391.9,265.1 427.9,264.5 455.1,265.0 482.4,265.4 518.4,267.0"/><circle class="pt" style="fill:var(--s1)" cx="91.6" cy="30.5" r="3.4"><title>quad-table-sg-fi
+280 quads
+702</title></circle><circle class="pt" style="fill:var(--s1)" cx="120.8" cy="87.3" r="3.4"><title>quad-table-sg-fi
+589 quads
+556</title></circle><circle class="pt" style="fill:var(--s1)" cx="153.5" cy="157.7" r="3.4"><title>quad-table-sg-fi
+1.4k quads
+376</title></circle><circle class="pt" style="fill:var(--s1)" cx="181.4" cy="185.7" r="3.4"><title>quad-table-sg-fi
+2.7k quads
+304</title></circle><circle class="pt" style="fill:var(--s1)" cx="209.3" cy="224.2" r="3.4"><title>quad-table-sg-fi
+5.6k quads
+205</title></circle><circle class="pt" style="fill:var(--s1)" cx="246.7" cy="257.5" r="3.4"><title>quad-table-sg-fi
+14k quads
+120</title></circle><circle class="pt" style="fill:var(--s1)" cx="274.5" cy="271.4" r="3.4"><title>quad-table-sg-fi
+29k quads
+84</title></circle><circle class="pt" style="fill:var(--s1)" cx="301.3" cy="268.0" r="3.4"><title>quad-table-sg-fi
+58k quads
+93</title></circle><circle class="pt" style="fill:var(--s1)" cx="337.3" cy="264.2" r="3.4"><title>quad-table-sg-fi
+145k quads
+103</title></circle><circle class="pt" style="fill:var(--s1)" cx="364.6" cy="264.8" r="3.4"><title>quad-table-sg-fi
+290k quads
+101</title></circle><circle class="pt" style="fill:var(--s1)" cx="391.9" cy="265.1" r="3.4"><title>quad-table-sg-fi
+581k quads
+100</title></circle><circle class="pt" style="fill:var(--s1)" cx="427.9" cy="264.5" r="3.4"><title>quad-table-sg-fi
+1.5M quads
+102</title></circle><circle class="pt" style="fill:var(--s1)" cx="455.1" cy="265.0" r="3.4"><title>quad-table-sg-fi
+2.9M quads
+101</title></circle><circle class="pt" style="fill:var(--s1)" cx="482.4" cy="265.4" r="3.4"><title>quad-table-sg-fi
+5.8M quads
+100</title></circle><circle class="pt" style="fill:var(--s1)" cx="518.4" cy="267.0" r="3.4"><title>quad-table-sg-fi
+15M quads
+95</title></circle><polyline class="link" style="stroke:var(--s2)" points="91.6,30.5 120.8,119.9 153.5,152.9 181.4,192.7 209.3,215.1 246.7,257.5 274.5,271.4 301.3,270.7 337.3,267.5 364.6,267.3 391.9,269.1 427.9,269.2 455.1,269.4 482.4,269.9 518.4,271.5"/><circle class="pt" style="fill:var(--s2)" cx="91.6" cy="30.5" r="3.4"><title>quad-table-sg-pi
+280 quads
+702</title></circle><circle class="pt" style="fill:var(--s2)" cx="120.8" cy="119.9" r="3.4"><title>quad-table-sg-pi
+589 quads
+473</title></circle><circle class="pt" style="fill:var(--s2)" cx="153.5" cy="152.9" r="3.4"><title>quad-table-sg-pi
+1.4k quads
+388</title></circle><circle class="pt" style="fill:var(--s2)" cx="181.4" cy="192.7" r="3.4"><title>quad-table-sg-pi
+2.7k quads
+286</title></circle><circle class="pt" style="fill:var(--s2)" cx="209.3" cy="215.1" r="3.4"><title>quad-table-sg-pi
+5.6k quads
+229</title></circle><circle class="pt" style="fill:var(--s2)" cx="246.7" cy="257.5" r="3.4"><title>quad-table-sg-pi
+14k quads
+120</title></circle><circle class="pt" style="fill:var(--s2)" cx="274.5" cy="271.4" r="3.4"><title>quad-table-sg-pi
+29k quads
+84</title></circle><circle class="pt" style="fill:var(--s2)" cx="301.3" cy="270.7" r="3.4"><title>quad-table-sg-pi
+58k quads
+86</title></circle><circle class="pt" style="fill:var(--s2)" cx="337.3" cy="267.5" r="3.4"><title>quad-table-sg-pi
+145k quads
+94</title></circle><circle class="pt" style="fill:var(--s2)" cx="364.6" cy="267.3" r="3.4"><title>quad-table-sg-pi
+290k quads
+95</title></circle><circle class="pt" style="fill:var(--s2)" cx="391.9" cy="269.1" r="3.4"><title>quad-table-sg-pi
+581k quads
+90</title></circle><circle class="pt" style="fill:var(--s2)" cx="427.9" cy="269.2" r="3.4"><title>quad-table-sg-pi
+1.5M quads
+90</title></circle><circle class="pt" style="fill:var(--s2)" cx="455.1" cy="269.4" r="3.4"><title>quad-table-sg-pi
+2.9M quads
+89</title></circle><circle class="pt" style="fill:var(--s2)" cx="482.4" cy="269.9" r="3.4"><title>quad-table-sg-pi
+5.8M quads
+88</title></circle><circle class="pt" style="fill:var(--s2)" cx="518.4" cy="271.5" r="3.4"><title>quad-table-sg-pi
+15M quads
+84</title></circle></svg><p class="note">Net memory divided by quads. Where this flattens, the marginal cost per quad has settled.</p></div>
+</div>
+
+<table>
+<thead><tr><th>storage type</th><th>quads</th><th>memory</th><th>empty baseline</th>
+<th>net of baseline</th><th>bytes/quad</th><th>fit exponent</th><th>R²</th></tr></thead>
+<tbody><tr><td><code>quad-table-sg-fi</code></td><td>14,525,277</td><td>1.4 GB</td><td>3.7 MB</td><td>1.4 GB</td><td>95.4</td><td>0.826</td><td>0.9809</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>14,525,277</td><td>1.2 GB</td><td>3.3 MB</td><td>1.2 GB</td><td>83.9</td><td>0.814</td><td>0.9825</td></tr></tbody></table>
+<p class="sub" style="margin-top:8px">An empty store already holds a few MB.
+Subtracting it is what makes the exponent describe the data rather than the
+fixed overhead — on a small corpus the gross figure fits an exponent near zero
+purely because the baseline dominates.</p>
+
+<h2>Load</h2>
+<div class="grid2"><div class="card"><h3>Import throughput</h3>
+<p class="sub">per incremental shard batch</p><div class="legend"><span class="key"><i style="background:var(--s1)"></i>quad-table-sg-fi</span><span class="key"><i style="background:var(--s2)"></i>quad-table-sg-pi</span></div><svg viewBox="0 0 560 330" class="chart" role="img"><defs><clipPath id="plot3"><rect x="66" y="16" width="478" height="270"/></clipPath></defs><line class="grid" x1="66" y1="273.9" x2="544" y2="273.9"/><text class="tick ty" x="58" y="277.4">10k</text><line class="grid" x1="66" y1="245.3" x2="544" y2="245.3"/><text class="tick ty" x="58" y="248.8">20k</text><line class="grid" x1="66" y1="207.6" x2="544" y2="207.6"/><text class="tick ty" x="58" y="211.1">50k</text><line class="grid" x1="66" y1="179.0" x2="544" y2="179.0"/><text class="tick ty" x="58" y="182.5">100k</text><line class="grid" x1="66" y1="150.5" x2="544" y2="150.5"/><text class="tick ty" x="58" y="154.0">200k</text><line class="grid" x1="66" y1="112.8" x2="544" y2="112.8"/><text class="tick ty" x="58" y="116.3">500k</text><line class="grid" x1="66" y1="84.2" x2="544" y2="84.2"/><text class="tick ty" x="58" y="87.7">1.0M</text><line class="grid" x1="66" y1="55.7" x2="544" y2="55.7"/><text class="tick ty" x="58" y="59.2">2.0M</text><line class="grid" x1="66" y1="18.0" x2="544" y2="18.0"/><text class="tick ty" x="58" y="21.5">5.0M</text><line class="grid" x1="141.6" y1="16" x2="141.6" y2="286"/><text class="tick tx" x="141.6" y="302">1.0k</text><line class="grid" x1="232.2" y1="16" x2="232.2" y2="286"/><text class="tick tx" x="232.2" y="302">10k</text><line class="grid" x1="322.7" y1="16" x2="322.7" y2="286"/><text class="tick tx" x="322.7" y="302">100k</text><line class="grid" x1="413.2" y1="16" x2="413.2" y2="286"/><text class="tick tx" x="413.2" y="302">1.0M</text><line class="grid" x1="503.7" y1="16" x2="503.7" y2="286"/><text class="tick tx" x="503.7" y="302">10M</text><text class="axis tx" x="305" y="324">quads stored</text><text class="axis" transform="translate(13,151) rotate(-90)" text-anchor="middle">import rate (quads/s)</text><polyline class="link" style="stroke:var(--s1)" points="91.6,271.5 120.8,264.3 153.5,228.3 181.4,205.5 209.3,175.2 246.7,131.6 274.5,110.7 301.3,88.7 337.3,59.8 364.6,50.8 391.9,42.1 427.9,36.2 455.1,33.8 482.4,32.1 518.4,69.6"/><circle class="pt" style="fill:var(--s1)" cx="91.6" cy="271.5" r="3.4"><title>quad-table-sg-fi
+280 quads
+11k</title></circle><circle class="pt" style="fill:var(--s1)" cx="120.8" cy="264.3" r="3.4"><title>quad-table-sg-fi
+589 quads
+13k</title></circle><circle class="pt" style="fill:var(--s1)" cx="153.5" cy="228.3" r="3.4"><title>quad-table-sg-fi
+1.4k quads
+30k</title></circle><circle class="pt" style="fill:var(--s1)" cx="181.4" cy="205.5" r="3.4"><title>quad-table-sg-fi
+2.7k quads
+53k</title></circle><circle class="pt" style="fill:var(--s1)" cx="209.3" cy="175.2" r="3.4"><title>quad-table-sg-fi
+5.6k quads
+110k</title></circle><circle class="pt" style="fill:var(--s1)" cx="246.7" cy="131.6" r="3.4"><title>quad-table-sg-fi
+14k quads
+317k</title></circle><circle class="pt" style="fill:var(--s1)" cx="274.5" cy="110.7" r="3.4"><title>quad-table-sg-fi
+29k quads
+526k</title></circle><circle class="pt" style="fill:var(--s1)" cx="301.3" cy="88.7" r="3.4"><title>quad-table-sg-fi
+58k quads
+897k</title></circle><circle class="pt" style="fill:var(--s1)" cx="337.3" cy="59.8" r="3.4"><title>quad-table-sg-fi
+145k quads
+1.8M</title></circle><circle class="pt" style="fill:var(--s1)" cx="364.6" cy="50.8" r="3.4"><title>quad-table-sg-fi
+290k quads
+2.3M</title></circle><circle class="pt" style="fill:var(--s1)" cx="391.9" cy="42.1" r="3.4"><title>quad-table-sg-fi
+581k quads
+2.8M</title></circle><circle class="pt" style="fill:var(--s1)" cx="427.9" cy="36.2" r="3.4"><title>quad-table-sg-fi
+1.5M quads
+3.2M</title></circle><circle class="pt" style="fill:var(--s1)" cx="455.1" cy="33.8" r="3.4"><title>quad-table-sg-fi
+2.9M quads
+3.4M</title></circle><circle class="pt" style="fill:var(--s1)" cx="482.4" cy="32.1" r="3.4"><title>quad-table-sg-fi
+5.8M quads
+3.5M</title></circle><circle class="pt" style="fill:var(--s1)" cx="518.4" cy="69.6" r="3.4"><title>quad-table-sg-fi
+15M quads
+1.4M</title></circle><polyline class="link" style="stroke:var(--s2)" points="91.6,267.8 120.8,264.6 153.5,227.2 181.4,204.9 209.3,176.0 246.7,131.0 274.5,111.8 301.3,89.3 337.3,59.0 364.6,49.2 391.9,40.3 427.9,32.6 455.1,31.8 482.4,30.5 518.4,59.1"/><circle class="pt" style="fill:var(--s2)" cx="91.6" cy="267.8" r="3.4"><title>quad-table-sg-pi
+280 quads
+12k</title></circle><circle class="pt" style="fill:var(--s2)" cx="120.8" cy="264.6" r="3.4"><title>quad-table-sg-pi
+589 quads
+13k</title></circle><circle class="pt" style="fill:var(--s2)" cx="153.5" cy="227.2" r="3.4"><title>quad-table-sg-pi
+1.4k quads
+31k</title></circle><circle class="pt" style="fill:var(--s2)" cx="181.4" cy="204.9" r="3.4"><title>quad-table-sg-pi
+2.7k quads
+53k</title></circle><circle class="pt" style="fill:var(--s2)" cx="209.3" cy="176.0" r="3.4"><title>quad-table-sg-pi
+5.6k quads
+108k</title></circle><circle class="pt" style="fill:var(--s2)" cx="246.7" cy="131.0" r="3.4"><title>quad-table-sg-pi
+14k quads
+321k</title></circle><circle class="pt" style="fill:var(--s2)" cx="274.5" cy="111.8" r="3.4"><title>quad-table-sg-pi
+29k quads
+512k</title></circle><circle class="pt" style="fill:var(--s2)" cx="301.3" cy="89.3" r="3.4"><title>quad-table-sg-pi
+58k quads
+884k</title></circle><circle class="pt" style="fill:var(--s2)" cx="337.3" cy="59.0" r="3.4"><title>quad-table-sg-pi
+145k quads
+1.8M</title></circle><circle class="pt" style="fill:var(--s2)" cx="364.6" cy="49.2" r="3.4"><title>quad-table-sg-pi
+290k quads
+2.3M</title></circle><circle class="pt" style="fill:var(--s2)" cx="391.9" cy="40.3" r="3.4"><title>quad-table-sg-pi
+581k quads
+2.9M</title></circle><circle class="pt" style="fill:var(--s2)" cx="427.9" cy="32.6" r="3.4"><title>quad-table-sg-pi
+1.5M quads
+3.5M</title></circle><circle class="pt" style="fill:var(--s2)" cx="455.1" cy="31.8" r="3.4"><title>quad-table-sg-pi
+2.9M quads
+3.6M</title></circle><circle class="pt" style="fill:var(--s2)" cx="482.4" cy="30.5" r="3.4"><title>quad-table-sg-pi
+5.8M quads
+3.7M</title></circle><circle class="pt" style="fill:var(--s2)" cx="518.4" cy="59.1" r="3.4"><title>quad-table-sg-pi
+15M quads
+1.8M</title></circle></svg><p class="note">Throughput of each incremental load, not cumulative.</p></div></div>
+
+<h2>Queries</h2>
+<p class="sub">Each point is a block of repeated executions timed as a unit and
+divided by the count, with the shell's per-statement overhead subtracted — so
+resolution comes from the host clock, not RDFox's millisecond printout. Dashed
+line is the fitted power law.
+<b>constant</b> = exponent near zero with almost no spread: the query does not
+grow with the corpus. <b>–</b> = points scattered with no reliable trend.</p>
+<table>
+<thead><tr><th>query</th><th>quad-table-sg-fi</th><th>quad-table-sg-pi</th>
+<th>exponent</th></tr></thead>
+<tbody><tr><td>q01_provenance_of_one_triple</td><td>13.9 µs</td><td>14.2 µs</td><td>constant</td></tr><tr><td>q02_contents_of_one_graph</td><td>4.6 µs</td><td>3.5 µs</td><td>constant</td></tr><tr><td>q03_graphs_mentioning_hub_entity</td><td>290.3 ms</td><td>154.0 ms</td><td>0.95</td></tr><tr><td>q04_quads_per_document</td><td>130.1 ms</td><td>130.2 ms</td><td>0.79</td></tr><tr><td>q05_ancestor_chain</td><td>40.1 µs</td><td>44.7 µs</td><td>constant</td></tr><tr><td>q06_cross_graph_two_hop</td><td>1.6 ms</td><td>528.0 µs</td><td>0.37</td></tr><tr><td>q07_text_search</td><td>256.4 ms</td><td>256.8 ms</td><td>0.93</td></tr><tr><td>q08_class_with_provenance</td><td>2.8 ms</td><td>2.9 ms</td><td>0.65</td></tr><tr><td>q09_total_quads</td><td>50.9 ms</td><td>50.9 ms</td><td>0.77</td></tr><tr><td>q10_subtree_extraction</td><td>40.0 µs</td><td>40.0 µs</td><td>constant</td></tr></tbody></table>
+<div class="grid2"><div class="card"><h3>q01_provenance_of_one_triple</h3><p class="sub">1 rows at full size</p><div class="legend"><span class="key"><i style="background:var(--s1)"></i>quad-table-sg-fi</span><span class="key"><i style="background:var(--s2)"></i>quad-table-sg-pi</span></div><svg viewBox="0 0 560 330" class="chart" role="img"><defs><clipPath id="plot4"><rect x="66" y="16" width="478" height="270"/></clipPath></defs><line class="grid" x1="66" y1="244.3" x2="544" y2="244.3"/><text class="tick ty" x="58" y="247.8">15 µs</text><line class="grid" x1="66" y1="143.4" x2="544" y2="143.4"/><text class="tick ty" x="58" y="146.9">20 µs</text><line class="grid" x1="141.6" y1="16" x2="141.6" y2="286"/><text class="tick tx" x="141.6" y="302">1.0k</text><line class="grid" x1="232.2" y1="16" x2="232.2" y2="286"/><text class="tick tx" x="232.2" y="302">10k</text><line class="grid" x1="322.7" y1="16" x2="322.7" y2="286"/><text class="tick tx" x="322.7" y="302">100k</text><line class="grid" x1="413.2" y1="16" x2="413.2" y2="286"/><text class="tick tx" x="413.2" y="302">1.0M</text><line class="grid" x1="503.7" y1="16" x2="503.7" y2="286"/><text class="tick tx" x="503.7" y="302">10M</text><text class="axis tx" x="305" y="324">quads stored</text><text class="axis" transform="translate(13,151) rotate(-90)" text-anchor="middle">time per execution</text><polyline class="fit" clip-path="url(#plot4)" style="stroke:var(--s1)" points="91.6,75.9 102.3,77.3 112.9,78.7 123.6,80.0 134.3,81.4 145.0,82.8 155.6,84.1 166.3,85.5 177.0,86.9 187.6,88.2 198.3,89.6 209.0,91.0 219.6,92.3 230.3,93.7 241.0,95.0 251.7,96.4 262.3,97.8 273.0,99.1 283.7,100.5 294.3,101.9 305.0,103.2 315.7,104.6 326.3,106.0 337.0,107.3 347.7,108.7 358.3,110.1 369.0,111.4 379.7,112.8 390.4,114.2 401.0,115.5 411.7,116.9 422.4,118.3 433.0,119.6 443.7,121.0 454.4,122.4 465.0,123.7 475.7,125.1 486.4,126.5 497.1,127.8 507.7,129.2 518.4,130.6"/><polyline class="link" style="stroke:var(--s1)" points="91.6,79.0 120.8,93.4 153.5,118.1 181.4,94.8 209.3,103.6 246.7,91.5 274.5,98.7 301.3,93.5 337.3,97.3 364.6,30.5 391.9,85.7 427.9,114.0 455.1,72.3 482.4,102.4 518.4,271.5"/><circle class="pt" style="fill:var(--s1)" cx="91.6" cy="79.0" r="3.4"><title>quad-table-sg-fi
+280 quads
+24.0303 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="120.8" cy="93.4" r="3.4"><title>quad-table-sg-fi
+589 quads
+23.0611 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="153.5" cy="118.1" r="3.4"><title>quad-table-sg-fi
+1.4k quads
+21.4956 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="181.4" cy="94.8" r="3.4"><title>quad-table-sg-fi
+2.7k quads
+22.9707 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="209.3" cy="103.6" r="3.4"><title>quad-table-sg-fi
+5.6k quads
+22.3984 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="246.7" cy="91.5" r="3.4"><title>quad-table-sg-fi
+14k quads
+23.1857 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="274.5" cy="98.7" r="3.4"><title>quad-table-sg-fi
+29k quads
+22.7159 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="301.3" cy="93.5" r="3.4"><title>quad-table-sg-fi
+58k quads
+23.0544 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="337.3" cy="97.3" r="3.4"><title>quad-table-sg-fi
+145k quads
+22.8045 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="364.6" cy="30.5" r="3.4"><title>quad-table-sg-fi
+290k quads
+27.5913 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="391.9" cy="85.7" r="3.4"><title>quad-table-sg-fi
+581k quads
+23.5698 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="427.9" cy="114.0" r="3.4"><title>quad-table-sg-fi
+1.5M quads
+21.7446 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="455.1" cy="72.3" r="3.4"><title>quad-table-sg-fi
+2.9M quads
+24.4876 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="482.4" cy="102.4" r="3.4"><title>quad-table-sg-fi
+5.8M quads
+22.4775 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="518.4" cy="271.5" r="3.4"><title>quad-table-sg-fi
+15M quads
+13.88 µs</title></circle><polyline class="fit" clip-path="url(#plot4)" style="stroke:var(--s2)" points="91.6,82.0 102.3,83.9 112.9,85.7 123.6,87.5 134.3,89.4 145.0,91.2 155.6,93.1 166.3,94.9 177.0,96.7 187.6,98.6 198.3,100.4 209.0,102.2 219.6,104.1 230.3,105.9 241.0,107.8 251.7,109.6 262.3,111.4 273.0,113.3 283.7,115.1 294.3,116.9 305.0,118.8 315.7,120.6 326.3,122.5 337.0,124.3 347.7,126.1 358.3,128.0 369.0,129.8 379.7,131.6 390.4,133.5 401.0,135.3 411.7,137.2 422.4,139.0 433.0,140.8 443.7,142.7 454.4,144.5 465.0,146.4 475.7,148.2 486.4,150.0 497.1,151.9 507.7,153.7 518.4,155.5"/><polyline class="link" style="stroke:var(--s2)" points="91.6,70.6 120.8,87.0 153.5,138.5 181.4,118.5 209.3,87.4 246.7,167.1 274.5,97.6 301.3,92.8 337.3,93.0 364.6,95.5 391.9,98.3 427.9,84.3 455.1,142.9 482.4,140.4 518.4,264.5"/><circle class="pt" style="fill:var(--s2)" cx="91.6" cy="70.6" r="3.4"><title>quad-table-sg-pi
+280 quads
+24.6111 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="120.8" cy="87.0" r="3.4"><title>quad-table-sg-pi
+589 quads
+23.4856 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="153.5" cy="138.5" r="3.4"><title>quad-table-sg-pi
+1.4k quads
+20.281 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="181.4" cy="118.5" r="3.4"><title>quad-table-sg-pi
+2.7k quads
+21.4664 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="209.3" cy="87.4" r="3.4"><title>quad-table-sg-pi
+5.6k quads
+23.4577 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="246.7" cy="167.1" r="3.4"><title>quad-table-sg-pi
+14k quads
+18.6893 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="274.5" cy="97.6" r="3.4"><title>quad-table-sg-pi
+29k quads
+22.7837 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="301.3" cy="92.8" r="3.4"><title>quad-table-sg-pi
+58k quads
+23.1012 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="337.3" cy="93.0" r="3.4"><title>quad-table-sg-pi
+145k quads
+23.0851 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="364.6" cy="95.5" r="3.4"><title>quad-table-sg-pi
+290k quads
+22.9243 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="391.9" cy="98.3" r="3.4"><title>quad-table-sg-pi
+581k quads
+22.7384 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="427.9" cy="84.3" r="3.4"><title>quad-table-sg-pi
+1.5M quads
+23.6679 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="455.1" cy="142.9" r="3.4"><title>quad-table-sg-pi
+2.9M quads
+20.0238 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="482.4" cy="140.4" r="3.4"><title>quad-table-sg-pi
+5.8M quads
+20.1684 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="518.4" cy="264.5" r="3.4"><title>quad-table-sg-pi
+15M quads
+14.1608 µs</title></circle></svg><p class="note">constant: no growth across a 51,876× increase in data (exponent -0.014, values span only 2.0×)</p></div><div class="card"><h3>q02_contents_of_one_graph</h3><p class="sub">12 rows at full size</p><div class="legend"><span class="key"><i style="background:var(--s1)"></i>quad-table-sg-fi</span><span class="key"><i style="background:var(--s2)"></i>quad-table-sg-pi</span></div><svg viewBox="0 0 560 330" class="chart" role="img"><defs><clipPath id="plot5"><rect x="66" y="16" width="478" height="270"/></clipPath></defs><line class="grid" x1="66" y1="245.8" x2="544" y2="245.8"/><text class="tick ty" x="58" y="249.3">4 µs</text><line class="grid" x1="66" y1="202.8" x2="544" y2="202.8"/><text class="tick ty" x="58" y="206.3">5 µs</text><line class="grid" x1="66" y1="167.7" x2="544" y2="167.7"/><text class="tick ty" x="58" y="171.2">6 µs</text><line class="grid" x1="66" y1="112.3" x2="544" y2="112.3"/><text class="tick ty" x="58" y="115.8">8 µs</text><line class="grid" x1="66" y1="69.4" x2="544" y2="69.4"/><text class="tick ty" x="58" y="72.9">10 µs</text><line class="grid" x1="141.6" y1="16" x2="141.6" y2="286"/><text class="tick tx" x="141.6" y="302">1.0k</text><line class="grid" x1="232.2" y1="16" x2="232.2" y2="286"/><text class="tick tx" x="232.2" y="302">10k</text><line class="grid" x1="322.7" y1="16" x2="322.7" y2="286"/><text class="tick tx" x="322.7" y="302">100k</text><line class="grid" x1="413.2" y1="16" x2="413.2" y2="286"/><text class="tick tx" x="413.2" y="302">1.0M</text><line class="grid" x1="503.7" y1="16" x2="503.7" y2="286"/><text class="tick tx" x="503.7" y="302">10M</text><text class="axis tx" x="305" y="324">quads stored</text><text class="axis" transform="translate(13,151) rotate(-90)" text-anchor="middle">time per execution</text><polyline class="fit" clip-path="url(#plot5)" style="stroke:var(--s1)" points="91.6,43.3 102.3,44.4 112.9,45.6 123.6,46.8 134.3,47.9 145.0,49.1 155.6,50.3 166.3,51.4 177.0,52.6 187.6,53.8 198.3,54.9 209.0,56.1 219.6,57.2 230.3,58.4 241.0,59.6 251.7,60.7 262.3,61.9 273.0,63.1 283.7,64.2 294.3,65.4 305.0,66.6 315.7,67.7 326.3,68.9 337.0,70.1 347.7,71.2 358.3,72.4 369.0,73.6 379.7,74.7 390.4,75.9 401.0,77.1 411.7,78.2 422.4,79.4 433.0,80.5 443.7,81.7 454.4,82.9 465.0,84.0 475.7,85.2 486.4,86.4 497.1,87.5 507.7,88.7 518.4,89.9"/><polyline class="link" style="stroke:var(--s1)" points="91.6,74.6 120.8,60.8 153.5,47.6 181.4,57.2 209.3,69.7 246.7,34.6 274.5,57.3 301.3,64.0 337.3,75.8 364.6,34.0 391.9,41.1 427.9,64.1 455.1,30.5 482.4,64.9 518.4,220.3"/><circle class="pt" style="fill:var(--s1)" cx="91.6" cy="74.6" r="3.4"><title>quad-table-sg-fi
+280 quads
+9.73078 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="120.8" cy="60.8" r="3.4"><title>quad-table-sg-fi
+589 quads
+10.4531 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="153.5" cy="47.6" r="3.4"><title>quad-table-sg-fi
+1.4k quads
+11.1994 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="181.4" cy="57.2" r="3.4"><title>quad-table-sg-fi
+2.7k quads
+10.655 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="209.3" cy="69.7" r="3.4"><title>quad-table-sg-fi
+5.6k quads
+9.98057 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="246.7" cy="34.6" r="3.4"><title>quad-table-sg-fi
+14k quads
+11.9806 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="274.5" cy="57.3" r="3.4"><title>quad-table-sg-fi
+29k quads
+10.647 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="301.3" cy="64.0" r="3.4"><title>quad-table-sg-fi
+58k quads
+10.2854 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="337.3" cy="75.8" r="3.4"><title>quad-table-sg-fi
+145k quads
+9.67134 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="364.6" cy="34.0" r="3.4"><title>quad-table-sg-fi
+290k quads
+12.0161 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="391.9" cy="41.1" r="3.4"><title>quad-table-sg-fi
+581k quads
+11.5795 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="427.9" cy="64.1" r="3.4"><title>quad-table-sg-fi
+1.5M quads
+10.2769 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="455.1" cy="30.5" r="3.4"><title>quad-table-sg-fi
+2.9M quads
+12.2397 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="482.4" cy="64.9" r="3.4"><title>quad-table-sg-fi
+5.8M quads
+10.2371 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="518.4" cy="220.3" r="3.4"><title>quad-table-sg-fi
+15M quads
+4.5654 µs</title></circle><polyline class="fit" clip-path="url(#plot5)" style="stroke:var(--s2)" points="91.6,57.0 102.3,59.0 112.9,61.1 123.6,63.1 134.3,65.1 145.0,67.2 155.6,69.2 166.3,71.3 177.0,73.3 187.6,75.3 198.3,77.4 209.0,79.4 219.6,81.5 230.3,83.5 241.0,85.5 251.7,87.6 262.3,89.6 273.0,91.7 283.7,93.7 294.3,95.7 305.0,97.8 315.7,99.8 326.3,101.9 337.0,103.9 347.7,105.9 358.3,108.0 369.0,110.0 379.7,112.1 390.4,114.1 401.0,116.2 411.7,118.2 422.4,120.2 433.0,122.3 443.7,124.3 454.4,126.4 465.0,128.4 475.7,130.4 486.4,132.5 497.1,134.5 507.7,136.6 518.4,138.6"/><polyline class="link" style="stroke:var(--s2)" points="91.6,96.1 120.8,47.2 153.5,97.4 181.4,95.8 209.3,56.1 246.7,153.3 274.5,54.2 301.3,84.1 337.3,60.2 364.6,56.3 391.9,66.3 427.9,60.8 455.1,134.0 482.4,129.9 518.4,271.5"/><circle class="pt" style="fill:var(--s2)" cx="91.6" cy="96.1" r="3.4"><title>quad-table-sg-pi
+280 quads
+8.70321 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="120.8" cy="47.2" r="3.4"><title>quad-table-sg-pi
+589 quads
+11.2189 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="153.5" cy="97.4" r="3.4"><title>quad-table-sg-pi
+1.4k quads
+8.64507 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="181.4" cy="95.8" r="3.4"><title>quad-table-sg-pi
+2.7k quads
+8.71952 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="209.3" cy="56.1" r="3.4"><title>quad-table-sg-pi
+5.6k quads
+10.712 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="246.7" cy="153.3" r="3.4"><title>quad-table-sg-pi
+14k quads
+6.46711 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="274.5" cy="54.2" r="3.4"><title>quad-table-sg-pi
+29k quads
+10.8218 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="301.3" cy="84.1" r="3.4"><title>quad-table-sg-pi
+58k quads
+9.26151 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="337.3" cy="60.2" r="3.4"><title>quad-table-sg-pi
+145k quads
+10.4876 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="364.6" cy="56.3" r="3.4"><title>quad-table-sg-pi
+290k quads
+10.7008 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="391.9" cy="66.3" r="3.4"><title>quad-table-sg-pi
+581k quads
+10.1598 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="427.9" cy="60.8" r="3.4"><title>quad-table-sg-pi
+1.5M quads
+10.4561 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="455.1" cy="134.0" r="3.4"><title>quad-table-sg-pi
+2.9M quads
+7.14926 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="482.4" cy="129.9" r="3.4"><title>quad-table-sg-pi
+5.8M quads
+7.30397 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="518.4" cy="271.5" r="3.4"><title>quad-table-sg-pi
+15M quads
+3.49929 µs</title></circle></svg><p class="note">constant: no growth across a 51,876× increase in data (exponent -0.022, values span only 2.7×)</p></div><div class="card"><h3>q03_graphs_mentioning_hub_entity</h3><p class="sub">250,633 rows at full size</p><div class="legend"><span class="key"><i style="background:var(--s1)"></i>quad-table-sg-fi</span><span class="key"><i style="background:var(--s2)"></i>quad-table-sg-pi</span></div><svg viewBox="0 0 560 330" class="chart" role="img"><defs><clipPath id="plot6"><rect x="66" y="16" width="478" height="270"/></clipPath></defs><line class="grid" x1="66" y1="280.9" x2="544" y2="280.9"/><text class="tick ty" x="58" y="284.4">10 µs</text><line class="grid" x1="66" y1="224.8" x2="544" y2="224.8"/><text class="tick ty" x="58" y="228.3">100 µs</text><line class="grid" x1="66" y1="168.7" x2="544" y2="168.7"/><text class="tick ty" x="58" y="172.2">1 ms</text><line class="grid" x1="66" y1="112.5" x2="544" y2="112.5"/><text class="tick ty" x="58" y="116.0">10 ms</text><line class="grid" x1="66" y1="56.4" x2="544" y2="56.4"/><text class="tick ty" x="58" y="59.9">100 ms</text><line class="grid" x1="141.6" y1="16" x2="141.6" y2="286"/><text class="tick tx" x="141.6" y="302">1.0k</text><line class="grid" x1="232.2" y1="16" x2="232.2" y2="286"/><text class="tick tx" x="232.2" y="302">10k</text><line class="grid" x1="322.7" y1="16" x2="322.7" y2="286"/><text class="tick tx" x="322.7" y="302">100k</text><line class="grid" x1="413.2" y1="16" x2="413.2" y2="286"/><text class="tick tx" x="413.2" y="302">1.0M</text><line class="grid" x1="503.7" y1="16" x2="503.7" y2="286"/><text class="tick tx" x="503.7" y="302">10M</text><text class="axis tx" x="305" y="324">quads stored</text><text class="axis" transform="translate(13,151) rotate(-90)" text-anchor="middle">time per execution</text><polyline class="fit" clip-path="url(#plot6)" style="stroke:var(--s1)" points="91.6,300.0 102.3,293.7 112.9,287.4 123.6,281.1 134.3,274.8 145.0,268.5 155.6,262.2 166.3,255.9 177.0,249.6 187.6,243.3 198.3,237.0 209.0,230.7 219.6,224.4 230.3,218.1 241.0,211.8 251.7,205.4 262.3,199.1 273.0,192.8 283.7,186.5 294.3,180.2 305.0,173.9 315.7,167.6 326.3,161.3 337.0,155.0 347.7,148.7 358.3,142.4 369.0,136.1 379.7,129.8 390.4,123.5 401.0,117.2 411.7,110.9 422.4,104.6 433.0,98.3 443.7,92.0 454.4,85.7 465.0,79.4 475.7,73.1 486.4,66.8 497.1,60.5 507.7,54.2 518.4,47.9"/><polyline class="link" style="stroke:var(--s1)" points="91.6,270.4 120.8,265.4 153.5,263.1 181.4,253.1 209.3,239.7 246.7,223.7 274.5,207.8 301.3,192.6 337.3,168.3 364.6,148.1 391.9,126.8 427.9,98.9 455.1,76.0 482.4,55.5 518.4,30.5"/><circle class="pt" style="fill:var(--s1)" cx="91.6" cy="270.4" r="3.4"><title>quad-table-sg-fi
+280 quads
+15.3793 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="120.8" cy="265.4" r="3.4"><title>quad-table-sg-fi
+589 quads
+18.8985 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="153.5" cy="263.1" r="3.4"><title>quad-table-sg-fi
+1.4k quads
+20.7349 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="181.4" cy="253.1" r="3.4"><title>quad-table-sg-fi
+2.7k quads
+31.3086 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="209.3" cy="239.7" r="3.4"><title>quad-table-sg-fi
+5.6k quads
+54.1733 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="246.7" cy="223.7" r="3.4"><title>quad-table-sg-fi
+14k quads
+104.635 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="274.5" cy="207.8" r="3.4"><title>quad-table-sg-fi
+29k quads
+200.55 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="301.3" cy="192.6" r="3.4"><title>quad-table-sg-fi
+58k quads
+374.662 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="337.3" cy="168.3" r="3.4"><title>quad-table-sg-fi
+145k quads
+1.0138 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="364.6" cy="148.1" r="3.4"><title>quad-table-sg-fi
+290k quads
+2.32862 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="391.9" cy="126.8" r="3.4"><title>quad-table-sg-fi
+581k quads
+5.56758 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="427.9" cy="98.9" r="3.4"><title>quad-table-sg-fi
+1.5M quads
+17.5124 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="455.1" cy="76.0" r="3.4"><title>quad-table-sg-fi
+2.9M quads
+44.8734 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="482.4" cy="55.5" r="3.4"><title>quad-table-sg-fi
+5.8M quads
+104.095 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="518.4" cy="30.5" r="3.4"><title>quad-table-sg-fi
+15M quads
+290.256 ms</title></circle><polyline class="fit" clip-path="url(#plot6)" style="stroke:var(--s2)" points="91.6,296.4 102.3,290.5 112.9,284.5 123.6,278.6 134.3,272.6 145.0,266.7 155.6,260.7 166.3,254.8 177.0,248.8 187.6,242.9 198.3,237.0 209.0,231.0 219.6,225.1 230.3,219.1 241.0,213.2 251.7,207.2 262.3,201.3 273.0,195.3 283.7,189.4 294.3,183.4 305.0,177.5 315.7,171.6 326.3,165.6 337.0,159.7 347.7,153.7 358.3,147.8 369.0,141.8 379.7,135.9 390.4,129.9 401.0,124.0 411.7,118.1 422.4,112.1 433.0,106.2 443.7,100.2 454.4,94.3 465.0,88.3 475.7,82.4 486.4,76.4 497.1,70.5 507.7,64.6 518.4,58.6"/><polyline class="link" style="stroke:var(--s2)" points="91.6,271.5 120.8,264.3 153.5,261.6 181.4,254.2 209.3,239.2 246.7,224.0 274.5,207.6 301.3,193.5 337.3,169.0 364.6,150.4 391.9,130.8 427.9,105.5 455.1,86.2 482.4,68.8 518.4,45.9"/><circle class="pt" style="fill:var(--s2)" cx="91.6" cy="271.5" r="3.4"><title>quad-table-sg-pi
+280 quads
+14.6833 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="120.8" cy="264.3" r="3.4"><title>quad-table-sg-pi
+589 quads
+19.7265 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="153.5" cy="261.6" r="3.4"><title>quad-table-sg-pi
+1.4k quads
+22.0833 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="181.4" cy="254.2" r="3.4"><title>quad-table-sg-pi
+2.7k quads
+29.8605 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="209.3" cy="239.2" r="3.4"><title>quad-table-sg-pi
+5.6k quads
+55.2724 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="246.7" cy="224.0" r="3.4"><title>quad-table-sg-pi
+14k quads
+103.306 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="274.5" cy="207.6" r="3.4"><title>quad-table-sg-pi
+29k quads
+202.037 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="301.3" cy="193.5" r="3.4"><title>quad-table-sg-pi
+58k quads
+360.811 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="337.3" cy="169.0" r="3.4"><title>quad-table-sg-pi
+145k quads
+986.015 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="364.6" cy="150.4" r="3.4"><title>quad-table-sg-pi
+290k quads
+2.11944 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="391.9" cy="130.8" r="3.4"><title>quad-table-sg-pi
+581k quads
+4.71935 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="427.9" cy="105.5" r="3.4"><title>quad-table-sg-pi
+1.5M quads
+13.3383 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="455.1" cy="86.2" r="3.4"><title>quad-table-sg-pi
+2.9M quads
+29.4868 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="482.4" cy="68.8" r="3.4"><title>quad-table-sg-pi
+5.8M quads
+60.176 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="518.4" cy="45.9" r="3.4"><title>quad-table-sg-pi
+15M quads
+153.95 ms</title></circle></svg><p class="note">exponent 0.95 (linear), R² 0.969</p></div><div class="card"><h3>q04_quads_per_document</h3><p class="sub">20 rows at full size</p><div class="legend"><span class="key"><i style="background:var(--s1)"></i>quad-table-sg-fi</span><span class="key"><i style="background:var(--s2)"></i>quad-table-sg-pi</span></div><svg viewBox="0 0 560 330" class="chart" role="img"><defs><clipPath id="plot7"><rect x="66" y="16" width="478" height="270"/></clipPath></defs><line class="grid" x1="66" y1="263.0" x2="544" y2="263.0"/><text class="tick ty" x="58" y="266.5">50 µs</text><line class="grid" x1="66" y1="242.5" x2="544" y2="242.5"/><text class="tick ty" x="58" y="246.0">100 µs</text><line class="grid" x1="66" y1="222.0" x2="544" y2="222.0"/><text class="tick ty" x="58" y="225.5">200 µs</text><line class="grid" x1="66" y1="194.9" x2="544" y2="194.9"/><text class="tick ty" x="58" y="198.4">500 µs</text><line class="grid" x1="66" y1="174.4" x2="544" y2="174.4"/><text class="tick ty" x="58" y="177.9">1 ms</text><line class="grid" x1="66" y1="153.9" x2="544" y2="153.9"/><text class="tick ty" x="58" y="157.4">2 ms</text><line class="grid" x1="66" y1="126.8" x2="544" y2="126.8"/><text class="tick ty" x="58" y="130.3">5 ms</text><line class="grid" x1="66" y1="106.4" x2="544" y2="106.4"/><text class="tick ty" x="58" y="109.9">10 ms</text><line class="grid" x1="66" y1="85.9" x2="544" y2="85.9"/><text class="tick ty" x="58" y="89.4">20 ms</text><line class="grid" x1="66" y1="58.8" x2="544" y2="58.8"/><text class="tick ty" x="58" y="62.3">50 ms</text><line class="grid" x1="66" y1="38.3" x2="544" y2="38.3"/><text class="tick ty" x="58" y="41.8">100 ms</text><line class="grid" x1="141.6" y1="16" x2="141.6" y2="286"/><text class="tick tx" x="141.6" y="302">1.0k</text><line class="grid" x1="232.2" y1="16" x2="232.2" y2="286"/><text class="tick tx" x="232.2" y="302">10k</text><line class="grid" x1="322.7" y1="16" x2="322.7" y2="286"/><text class="tick tx" x="322.7" y="302">100k</text><line class="grid" x1="413.2" y1="16" x2="413.2" y2="286"/><text class="tick tx" x="413.2" y="302">1.0M</text><line class="grid" x1="503.7" y1="16" x2="503.7" y2="286"/><text class="tick tx" x="503.7" y="302">10M</text><text class="axis tx" x="305" y="324">quads stored</text><text class="axis" transform="translate(13,151) rotate(-90)" text-anchor="middle">time per execution</text><polyline class="fit" clip-path="url(#plot7)" style="stroke:var(--s1)" points="91.6,302.2 102.3,295.8 112.9,289.4 123.6,283.1 134.3,276.7 145.0,270.3 155.6,264.0 166.3,257.6 177.0,251.2 187.6,244.8 198.3,238.5 209.0,232.1 219.6,225.7 230.3,219.4 241.0,213.0 251.7,206.6 262.3,200.3 273.0,193.9 283.7,187.5 294.3,181.1 305.0,174.8 315.7,168.4 326.3,162.0 337.0,155.7 347.7,149.3 358.3,142.9 369.0,136.6 379.7,130.2 390.4,123.8 401.0,117.4 411.7,111.1 422.4,104.7 433.0,98.3 443.7,92.0 454.4,85.6 465.0,79.2 475.7,72.9 486.4,66.5 497.1,60.1 507.7,53.8 518.4,47.4"/><polyline class="link" style="stroke:var(--s1)" points="91.6,270.1 120.8,268.1 153.5,261.9 181.4,255.0 209.3,244.7 246.7,227.9 274.5,211.1 301.3,194.7 337.3,169.8 364.6,148.7 391.9,116.8 427.9,98.4 455.1,77.6 482.4,57.1 518.4,30.5"/><circle class="pt" style="fill:var(--s1)" cx="91.6" cy="270.1" r="3.4"><title>quad-table-sg-fi
+280 quads
+39.2796 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="120.8" cy="268.1" r="3.4"><title>quad-table-sg-fi
+589 quads
+42.0271 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="153.5" cy="261.9" r="3.4"><title>quad-table-sg-fi
+1.4k quads
+51.8909 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="181.4" cy="255.0" r="3.4"><title>quad-table-sg-fi
+2.7k quads
+65.5439 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="209.3" cy="244.7" r="3.4"><title>quad-table-sg-fi
+5.6k quads
+92.8975 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="246.7" cy="227.9" r="3.4"><title>quad-table-sg-fi
+14k quads
+163.732 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="274.5" cy="211.1" r="3.4"><title>quad-table-sg-fi
+29k quads
+288.914 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="301.3" cy="194.7" r="3.4"><title>quad-table-sg-fi
+58k quads
+503.985 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="337.3" cy="169.8" r="3.4"><title>quad-table-sg-fi
+145k quads
+1.16868 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="364.6" cy="148.7" r="3.4"><title>quad-table-sg-fi
+290k quads
+2.38363 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="391.9" cy="116.8" r="3.4"><title>quad-table-sg-fi
+581k quads
+7.02802 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="427.9" cy="98.4" r="3.4"><title>quad-table-sg-fi
+1.5M quads
+13.073 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="455.1" cy="77.6" r="3.4"><title>quad-table-sg-fi
+2.9M quads
+26.4354 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="482.4" cy="57.1" r="3.4"><title>quad-table-sg-fi
+5.8M quads
+52.8916 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="518.4" cy="30.5" r="3.4"><title>quad-table-sg-fi
+15M quads
+130.114 ms</title></circle><polyline class="fit" clip-path="url(#plot7)" style="stroke:var(--s2)" points="91.6,302.4 102.3,296.1 112.9,289.8 123.6,283.4 134.3,277.1 145.0,270.8 155.6,264.5 166.3,258.1 177.0,251.8 187.6,245.5 198.3,239.1 209.0,232.8 219.6,226.5 230.3,220.1 241.0,213.8 251.7,207.5 262.3,201.2 273.0,194.8 283.7,188.5 294.3,182.2 305.0,175.8 315.7,169.5 326.3,163.2 337.0,156.9 347.7,150.5 358.3,144.2 369.0,137.9 379.7,131.5 390.4,125.2 401.0,118.9 411.7,112.6 422.4,106.2 433.0,99.9 443.7,93.6 454.4,87.2 465.0,80.9 475.7,74.6 486.4,68.3 497.1,61.9 507.7,55.6 518.4,49.3"/><polyline class="link" style="stroke:var(--s2)" points="91.6,271.5 120.8,265.9 153.5,262.1 181.4,256.4 209.3,245.7 246.7,228.6 274.5,211.3 301.3,195.3 337.3,169.8 364.6,148.9 391.9,127.8 427.9,98.8 455.1,78.4 482.4,57.6 518.4,30.5"/><circle class="pt" style="fill:var(--s2)" cx="91.6" cy="271.5" r="3.4"><title>quad-table-sg-pi
+280 quads
+37.4586 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="120.8" cy="265.9" r="3.4"><title>quad-table-sg-pi
+589 quads
+45.2934 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="153.5" cy="262.1" r="3.4"><title>quad-table-sg-pi
+1.4k quads
+51.5719 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="181.4" cy="256.4" r="3.4"><title>quad-table-sg-pi
+2.7k quads
+62.4565 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="209.3" cy="245.7" r="3.4"><title>quad-table-sg-pi
+5.6k quads
+89.6834 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="246.7" cy="228.6" r="3.4"><title>quad-table-sg-pi
+14k quads
+160.098 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="274.5" cy="211.3" r="3.4"><title>quad-table-sg-pi
+29k quads
+287.591 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="301.3" cy="195.3" r="3.4"><title>quad-table-sg-pi
+58k quads
+494.369 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="337.3" cy="169.8" r="3.4"><title>quad-table-sg-pi
+145k quads
+1.16826 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="364.6" cy="148.9" r="3.4"><title>quad-table-sg-pi
+290k quads
+2.36966 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="391.9" cy="127.8" r="3.4"><title>quad-table-sg-pi
+581k quads
+4.84434 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="427.9" cy="98.8" r="3.4"><title>quad-table-sg-pi
+1.5M quads
+12.923 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="455.1" cy="78.4" r="3.4"><title>quad-table-sg-pi
+2.9M quads
+25.7684 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="482.4" cy="57.6" r="3.4"><title>quad-table-sg-pi
+5.8M quads
+52.0057 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="518.4" cy="30.5" r="3.4"><title>quad-table-sg-pi
+15M quads
+130.244 ms</title></circle></svg><p class="note">exponent 0.79 (sub-linear), R² 0.965</p></div><div class="card"><h3>q05_ancestor_chain</h3><p class="sub">2 rows at full size</p><div class="legend"><span class="key"><i style="background:var(--s1)"></i>quad-table-sg-fi</span><span class="key"><i style="background:var(--s2)"></i>quad-table-sg-pi</span></div><svg viewBox="0 0 560 330" class="chart" role="img"><defs><clipPath id="plot8"><rect x="66" y="16" width="478" height="270"/></clipPath></defs><line class="grid" x1="66" y1="273.8" x2="544" y2="273.8"/><text class="tick ty" x="58" y="277.3">40 µs</text><line class="grid" x1="66" y1="119.2" x2="544" y2="119.2"/><text class="tick ty" x="58" y="122.7">50 µs</text><line class="grid" x1="141.6" y1="16" x2="141.6" y2="286"/><text class="tick tx" x="141.6" y="302">1.0k</text><line class="grid" x1="232.2" y1="16" x2="232.2" y2="286"/><text class="tick tx" x="232.2" y="302">10k</text><line class="grid" x1="322.7" y1="16" x2="322.7" y2="286"/><text class="tick tx" x="322.7" y="302">100k</text><line class="grid" x1="413.2" y1="16" x2="413.2" y2="286"/><text class="tick tx" x="413.2" y="302">1.0M</text><line class="grid" x1="503.7" y1="16" x2="503.7" y2="286"/><text class="tick tx" x="503.7" y="302">10M</text><text class="axis tx" x="305" y="324">quads stored</text><text class="axis" transform="translate(13,151) rotate(-90)" text-anchor="middle">time per execution</text><polyline class="fit" clip-path="url(#plot8)" style="stroke:var(--s1)" points="91.6,78.7 102.3,80.2 112.9,81.6 123.6,83.1 134.3,84.5 145.0,86.0 155.6,87.4 166.3,88.9 177.0,90.3 187.6,91.8 198.3,93.2 209.0,94.7 219.6,96.1 230.3,97.6 241.0,99.0 251.7,100.5 262.3,101.9 273.0,103.4 283.7,104.8 294.3,106.3 305.0,107.7 315.7,109.2 326.3,110.6 337.0,112.1 347.7,113.5 358.3,115.0 369.0,116.4 379.7,117.9 390.4,119.3 401.0,120.8 411.7,122.2 422.4,123.6 433.0,125.1 443.7,126.5 454.4,128.0 465.0,129.4 475.7,130.9 486.4,132.3 497.1,133.8 507.7,135.2 518.4,136.7"/><polyline class="link" style="stroke:var(--s1)" points="91.6,71.6 120.8,104.6 153.5,112.0 181.4,108.1 209.3,104.8 246.7,99.2 274.5,99.8 301.3,94.9 337.3,108.0 364.6,55.2 391.9,78.5 427.9,113.9 455.1,83.9 482.4,107.1 518.4,271.5"/><circle class="pt" style="fill:var(--s1)" cx="91.6" cy="71.6" r="3.4"><title>quad-table-sg-fi
+280 quads
+53.5529 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="120.8" cy="104.6" r="3.4"><title>quad-table-sg-fi
+589 quads
+51.0659 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="153.5" cy="112.0" r="3.4"><title>quad-table-sg-fi
+1.4k quads
+50.5219 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="181.4" cy="108.1" r="3.4"><title>quad-table-sg-fi
+2.7k quads
+50.8065 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="209.3" cy="104.8" r="3.4"><title>quad-table-sg-fi
+5.6k quads
+51.0464 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="246.7" cy="99.2" r="3.4"><title>quad-table-sg-fi
+14k quads
+51.4642 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="274.5" cy="99.8" r="3.4"><title>quad-table-sg-fi
+29k quads
+51.423 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="301.3" cy="94.9" r="3.4"><title>quad-table-sg-fi
+58k quads
+51.7809 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="337.3" cy="108.0" r="3.4"><title>quad-table-sg-fi
+145k quads
+50.8135 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="364.6" cy="55.2" r="3.4"><title>quad-table-sg-fi
+290k quads
+54.8423 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="391.9" cy="78.5" r="3.4"><title>quad-table-sg-fi
+581k quads
+53.0226 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="427.9" cy="113.9" r="3.4"><title>quad-table-sg-fi
+1.5M quads
+50.3849 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="455.1" cy="83.9" r="3.4"><title>quad-table-sg-fi
+2.9M quads
+52.6121 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="482.4" cy="107.1" r="3.4"><title>quad-table-sg-fi
+5.8M quads
+50.8767 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="518.4" cy="271.5" r="3.4"><title>quad-table-sg-fi
+15M quads
+40.1284 µs</title></circle><polyline class="fit" clip-path="url(#plot8)" style="stroke:var(--s2)" points="91.6,98.1 102.3,98.9 112.9,99.8 123.6,100.6 134.3,101.4 145.0,102.3 155.6,103.1 166.3,103.9 177.0,104.7 187.6,105.6 198.3,106.4 209.0,107.2 219.6,108.0 230.3,108.9 241.0,109.7 251.7,110.5 262.3,111.4 273.0,112.2 283.7,113.0 294.3,113.8 305.0,114.7 315.7,115.5 326.3,116.3 337.0,117.1 347.7,118.0 358.3,118.8 369.0,119.6 379.7,120.4 390.4,121.3 401.0,122.1 411.7,122.9 422.4,123.8 433.0,124.6 443.7,125.4 454.4,126.2 465.0,127.1 475.7,127.9 486.4,128.7 497.1,129.5 507.7,130.4 518.4,131.2"/><polyline class="link" style="stroke:var(--s2)" points="91.6,127.7 120.8,30.5 153.5,126.5 181.4,130.8 209.3,108.6 246.7,139.7 274.5,100.7 301.3,132.7 337.3,98.8 364.6,112.9 391.9,112.0 427.9,95.3 455.1,59.1 482.4,145.4 518.4,197.5"/><circle class="pt" style="fill:var(--s2)" cx="91.6" cy="127.7" r="3.4"><title>quad-table-sg-pi
+280 quads
+49.3885 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="120.8" cy="30.5" r="3.4"><title>quad-table-sg-pi
+589 quads
+56.8326 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="153.5" cy="126.5" r="3.4"><title>quad-table-sg-pi
+1.4k quads
+49.4765 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="181.4" cy="130.8" r="3.4"><title>quad-table-sg-pi
+2.7k quads
+49.1657 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="209.3" cy="108.6" r="3.4"><title>quad-table-sg-pi
+5.6k quads
+50.7682 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="246.7" cy="139.7" r="3.4"><title>quad-table-sg-pi
+14k quads
+48.5415 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="274.5" cy="100.7" r="3.4"><title>quad-table-sg-pi
+29k quads
+51.3506 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="301.3" cy="132.7" r="3.4"><title>quad-table-sg-pi
+58k quads
+49.0346 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="337.3" cy="98.8" r="3.4"><title>quad-table-sg-pi
+145k quads
+51.49 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="364.6" cy="112.9" r="3.4"><title>quad-table-sg-pi
+290k quads
+50.4535 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="391.9" cy="112.0" r="3.4"><title>quad-table-sg-pi
+581k quads
+50.5197 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="427.9" cy="95.3" r="3.4"><title>quad-table-sg-pi
+1.5M quads
+51.7507 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="455.1" cy="59.1" r="3.4"><title>quad-table-sg-pi
+2.9M quads
+54.5313 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="482.4" cy="145.4" r="3.4"><title>quad-table-sg-pi
+5.8M quads
+48.1421 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="518.4" cy="197.5" r="3.4"><title>quad-table-sg-pi
+15M quads
+44.6525 µs</title></circle></svg><p class="note">constant: no growth across a 51,876× increase in data (exponent -0.008, values span only 1.4×)</p></div><div class="card"><h3>q06_cross_graph_two_hop</h3><p class="sub">1,000 rows at full size</p><div class="legend"><span class="key"><i style="background:var(--s1)"></i>quad-table-sg-fi</span><span class="key"><i style="background:var(--s2)"></i>quad-table-sg-pi</span></div><svg viewBox="0 0 560 330" class="chart" role="img"><defs><clipPath id="plot9"><rect x="66" y="16" width="478" height="270"/></clipPath></defs><line class="grid" x1="66" y1="278.5" x2="544" y2="278.5"/><text class="tick ty" x="58" y="282.0">20 µs</text><line class="grid" x1="66" y1="226.9" x2="544" y2="226.9"/><text class="tick ty" x="58" y="230.4">50 µs</text><line class="grid" x1="66" y1="187.8" x2="544" y2="187.8"/><text class="tick ty" x="58" y="191.3">100 µs</text><line class="grid" x1="66" y1="148.8" x2="544" y2="148.8"/><text class="tick ty" x="58" y="152.3">200 µs</text><line class="grid" x1="66" y1="97.2" x2="544" y2="97.2"/><text class="tick ty" x="58" y="100.7">500 µs</text><line class="grid" x1="66" y1="58.1" x2="544" y2="58.1"/><text class="tick ty" x="58" y="61.6">1 ms</text><line class="grid" x1="66" y1="19.1" x2="544" y2="19.1"/><text class="tick ty" x="58" y="22.6">2 ms</text><line class="grid" x1="141.6" y1="16" x2="141.6" y2="286"/><text class="tick tx" x="141.6" y="302">1.0k</text><line class="grid" x1="232.2" y1="16" x2="232.2" y2="286"/><text class="tick tx" x="232.2" y="302">10k</text><line class="grid" x1="322.7" y1="16" x2="322.7" y2="286"/><text class="tick tx" x="322.7" y="302">100k</text><line class="grid" x1="413.2" y1="16" x2="413.2" y2="286"/><text class="tick tx" x="413.2" y="302">1.0M</text><line class="grid" x1="503.7" y1="16" x2="503.7" y2="286"/><text class="tick tx" x="503.7" y="302">10M</text><text class="axis tx" x="305" y="324">quads stored</text><text class="axis" transform="translate(13,151) rotate(-90)" text-anchor="middle">time per execution</text><polyline class="fit" clip-path="url(#plot9)" style="stroke:var(--s1)" points="91.6,249.0 102.3,243.3 112.9,237.6 123.6,231.8 134.3,226.1 145.0,220.4 155.6,214.7 166.3,209.0 177.0,203.2 187.6,197.5 198.3,191.8 209.0,186.1 219.6,180.4 230.3,174.6 241.0,168.9 251.7,163.2 262.3,157.5 273.0,151.8 283.7,146.0 294.3,140.3 305.0,134.6 315.7,128.9 326.3,123.2 337.0,117.4 347.7,111.7 358.3,106.0 369.0,100.3 379.7,94.5 390.4,88.8 401.0,83.1 411.7,77.4 422.4,71.7 433.0,65.9 443.7,60.2 454.4,54.5 465.0,48.8 475.7,43.1 486.4,37.3 497.1,31.6 507.7,25.9 518.4,20.2"/><polyline class="link" style="stroke:var(--s1)" points="91.6,266.1 120.8,256.8 153.5,250.0 181.4,239.9 209.3,181.9 246.7,103.2 274.5,96.6 301.3,93.2 337.3,93.5 364.6,93.0 391.9,89.2 427.9,88.9 455.1,74.3 482.4,71.5 518.4,30.5"/><circle class="pt" style="fill:var(--s1)" cx="91.6" cy="266.1" r="3.4"><title>quad-table-sg-fi
+280 quads
+24.9108 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="120.8" cy="256.8" r="3.4"><title>quad-table-sg-fi
+589 quads
+29.3994 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="153.5" cy="250.0" r="3.4"><title>quad-table-sg-fi
+1.4k quads
+33.1696 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="181.4" cy="239.9" r="3.4"><title>quad-table-sg-fi
+2.7k quads
+39.6765 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="209.3" cy="181.9" r="3.4"><title>quad-table-sg-fi
+5.6k quads
+111.069 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="246.7" cy="103.2" r="3.4"><title>quad-table-sg-fi
+14k quads
+449.287 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="274.5" cy="96.6" r="3.4"><title>quad-table-sg-fi
+29k quads
+504.776 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="301.3" cy="93.2" r="3.4"><title>quad-table-sg-fi
+58k quads
+536.388 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="337.3" cy="93.5" r="3.4"><title>quad-table-sg-fi
+145k quads
+533.969 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="364.6" cy="93.0" r="3.4"><title>quad-table-sg-fi
+290k quads
+538.078 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="391.9" cy="89.2" r="3.4"><title>quad-table-sg-fi
+581k quads
+575.966 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="427.9" cy="88.9" r="3.4"><title>quad-table-sg-fi
+1.5M quads
+579.534 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="455.1" cy="74.3" r="3.4"><title>quad-table-sg-fi
+2.9M quads
+750.851 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="482.4" cy="71.5" r="3.4"><title>quad-table-sg-fi
+5.8M quads
+788.917 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="518.4" cy="30.5" r="3.4"><title>quad-table-sg-fi
+15M quads
+1.63427 ms</title></circle><polyline class="fit" clip-path="url(#plot9)" style="stroke:var(--s2)" points="91.6,241.4 102.3,236.5 112.9,231.6 123.6,226.8 134.3,221.9 145.0,217.1 155.6,212.2 166.3,207.3 177.0,202.5 187.6,197.6 198.3,192.8 209.0,187.9 219.6,183.0 230.3,178.2 241.0,173.3 251.7,168.4 262.3,163.6 273.0,158.7 283.7,153.9 294.3,149.0 305.0,144.1 315.7,139.3 326.3,134.4 337.0,129.6 347.7,124.7 358.3,119.8 369.0,115.0 379.7,110.1 390.4,105.3 401.0,100.4 411.7,95.5 422.4,90.7 433.0,85.8 443.7,81.0 454.4,76.1 465.0,71.2 475.7,66.4 486.4,61.5 497.1,56.6 507.7,51.8 518.4,46.9"/><polyline class="link" style="stroke:var(--s2)" points="91.6,271.5 120.8,255.4 153.5,252.7 181.4,242.7 209.3,182.1 246.7,105.1 274.5,97.1 301.3,97.2 337.3,96.2 364.6,95.8 391.9,95.6 427.9,95.7 455.1,93.9 482.4,95.4 518.4,94.1"/><circle class="pt" style="fill:var(--s2)" cx="91.6" cy="271.5" r="3.4"><title>quad-table-sg-pi
+280 quads
+22.6325 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="120.8" cy="255.4" r="3.4"><title>quad-table-sg-pi
+589 quads
+30.1139 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="153.5" cy="252.7" r="3.4"><title>quad-table-sg-pi
+1.4k quads
+31.63 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="181.4" cy="242.7" r="3.4"><title>quad-table-sg-pi
+2.7k quads
+37.7531 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="209.3" cy="182.1" r="3.4"><title>quad-table-sg-pi
+5.6k quads
+110.734 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="246.7" cy="105.1" r="3.4"><title>quad-table-sg-pi
+14k quads
+434.613 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="274.5" cy="97.1" r="3.4"><title>quad-table-sg-pi
+29k quads
+500.669 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="301.3" cy="97.2" r="3.4"><title>quad-table-sg-pi
+58k quads
+499.951 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="337.3" cy="96.2" r="3.4"><title>quad-table-sg-pi
+145k quads
+508.874 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="364.6" cy="95.8" r="3.4"><title>quad-table-sg-pi
+290k quads
+512.72 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="391.9" cy="95.6" r="3.4"><title>quad-table-sg-pi
+581k quads
+514.589 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="427.9" cy="95.7" r="3.4"><title>quad-table-sg-pi
+1.5M quads
+513.174 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="455.1" cy="93.9" r="3.4"><title>quad-table-sg-pi
+2.9M quads
+529.703 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="482.4" cy="95.4" r="3.4"><title>quad-table-sg-pi
+5.8M quads
+516.145 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="518.4" cy="94.1" r="3.4"><title>quad-table-sg-pi
+15M quads
+528.045 µs</title></circle></svg><p class="note">exponent 0.37 (sub-linear), R² 0.833</p></div><div class="card"><h3>q07_text_search</h3><p class="sub">1 rows at full size</p><div class="legend"><span class="key"><i style="background:var(--s1)"></i>quad-table-sg-fi</span><span class="key"><i style="background:var(--s2)"></i>quad-table-sg-pi</span></div><svg viewBox="0 0 560 330" class="chart" role="img"><defs><clipPath id="plot10"><rect x="66" y="16" width="478" height="270"/></clipPath></defs><line class="grid" x1="66" y1="228.7" x2="544" y2="228.7"/><text class="tick ty" x="58" y="232.2">100 µs</text><line class="grid" x1="66" y1="170.6" x2="544" y2="170.6"/><text class="tick ty" x="58" y="174.1">1 ms</text><line class="grid" x1="66" y1="112.4" x2="544" y2="112.4"/><text class="tick ty" x="58" y="115.9">10 ms</text><line class="grid" x1="66" y1="54.3" x2="544" y2="54.3"/><text class="tick ty" x="58" y="57.8">100 ms</text><line class="grid" x1="141.6" y1="16" x2="141.6" y2="286"/><text class="tick tx" x="141.6" y="302">1.0k</text><line class="grid" x1="232.2" y1="16" x2="232.2" y2="286"/><text class="tick tx" x="232.2" y="302">10k</text><line class="grid" x1="322.7" y1="16" x2="322.7" y2="286"/><text class="tick tx" x="322.7" y="302">100k</text><line class="grid" x1="413.2" y1="16" x2="413.2" y2="286"/><text class="tick tx" x="413.2" y="302">1.0M</text><line class="grid" x1="503.7" y1="16" x2="503.7" y2="286"/><text class="tick tx" x="503.7" y="302">10M</text><text class="axis tx" x="305" y="324">quads stored</text><text class="axis" transform="translate(13,151) rotate(-90)" text-anchor="middle">time per execution</text><polyline class="fit" clip-path="url(#plot10)" style="stroke:var(--s1)" points="91.6,291.3 102.3,285.0 112.9,278.6 123.6,272.3 134.3,265.9 145.0,259.5 155.6,253.2 166.3,246.8 177.0,240.5 187.6,234.1 198.3,227.7 209.0,221.4 219.6,215.0 230.3,208.7 241.0,202.3 251.7,195.9 262.3,189.6 273.0,183.2 283.7,176.8 294.3,170.5 305.0,164.1 315.7,157.8 326.3,151.4 337.0,145.0 347.7,138.7 358.3,132.3 369.0,126.0 379.7,119.6 390.4,113.2 401.0,106.9 411.7,100.5 422.4,94.2 433.0,87.8 443.7,81.4 454.4,75.1 465.0,68.7 475.7,62.3 486.4,56.0 497.1,49.6 507.7,43.3 518.4,36.9"/><polyline class="link" style="stroke:var(--s1)" points="91.6,268.1 120.8,266.2 153.5,257.7 181.4,244.9 209.3,228.5 246.7,207.8 274.5,191.7 301.3,174.3 337.3,151.5 364.6,130.7 391.9,113.4 427.9,87.3 455.1,69.1 482.4,51.1 518.4,30.5"/><circle class="pt" style="fill:var(--s1)" cx="91.6" cy="268.1" r="3.4"><title>quad-table-sg-fi
+280 quads
+21.0341 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="120.8" cy="266.2" r="3.4"><title>quad-table-sg-fi
+589 quads
+22.6732 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="153.5" cy="257.7" r="3.4"><title>quad-table-sg-fi
+1.4k quads
+31.7095 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="181.4" cy="244.9" r="3.4"><title>quad-table-sg-fi
+2.7k quads
+52.6985 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="209.3" cy="228.5" r="3.4"><title>quad-table-sg-fi
+5.6k quads
+100.737 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="246.7" cy="207.8" r="3.4"><title>quad-table-sg-fi
+14k quads
+229.116 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="274.5" cy="191.7" r="3.4"><title>quad-table-sg-fi
+29k quads
+432.41 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="301.3" cy="174.3" r="3.4"><title>quad-table-sg-fi
+58k quads
+860.996 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="337.3" cy="151.5" r="3.4"><title>quad-table-sg-fi
+145k quads
+2.13116 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="364.6" cy="130.7" r="3.4"><title>quad-table-sg-fi
+290k quads
+4.85815 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="391.9" cy="113.4" r="3.4"><title>quad-table-sg-fi
+581k quads
+9.60901 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="427.9" cy="87.3" r="3.4"><title>quad-table-sg-fi
+1.5M quads
+27.0047 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="455.1" cy="69.1" r="3.4"><title>quad-table-sg-fi
+2.9M quads
+55.6537 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="482.4" cy="51.1" r="3.4"><title>quad-table-sg-fi
+5.8M quads
+113.45 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="518.4" cy="30.5" r="3.4"><title>quad-table-sg-fi
+15M quads
+256.416 ms</title></circle><polyline class="fit" clip-path="url(#plot10)" style="stroke:var(--s2)" points="91.6,292.2 102.3,285.8 112.9,279.4 123.6,273.0 134.3,266.7 145.0,260.3 155.6,253.9 166.3,247.6 177.0,241.2 187.6,234.8 198.3,228.4 209.0,222.1 219.6,215.7 230.3,209.3 241.0,202.9 251.7,196.6 262.3,190.2 273.0,183.8 283.7,177.5 294.3,171.1 305.0,164.7 315.7,158.3 326.3,152.0 337.0,145.6 347.7,139.2 358.3,132.8 369.0,126.5 379.7,120.1 390.4,113.7 401.0,107.4 411.7,101.0 422.4,94.6 433.0,88.2 443.7,81.9 454.4,75.5 465.0,69.1 475.7,62.8 486.4,56.4 497.1,50.0 507.7,43.6 518.4,37.3"/><polyline class="link" style="stroke:var(--s2)" points="91.6,271.5 120.8,263.3 153.5,258.9 181.4,245.7 209.3,228.4 246.7,208.8 274.5,192.2 301.3,175.3 337.3,152.2 364.6,132.7 391.9,113.8 427.9,87.7 455.1,69.4 482.4,51.2 518.4,30.5"/><circle class="pt" style="fill:var(--s2)" cx="91.6" cy="271.5" r="3.4"><title>quad-table-sg-pi
+280 quads
+18.3417 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="120.8" cy="263.3" r="3.4"><title>quad-table-sg-pi
+589 quads
+25.4332 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="153.5" cy="258.9" r="3.4"><title>quad-table-sg-pi
+1.4k quads
+30.2624 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="181.4" cy="245.7" r="3.4"><title>quad-table-sg-pi
+2.7k quads
+50.9291 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="209.3" cy="228.4" r="3.4"><title>quad-table-sg-pi
+5.6k quads
+101.219 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="246.7" cy="208.8" r="3.4"><title>quad-table-sg-pi
+14k quads
+219.811 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="274.5" cy="192.2" r="3.4"><title>quad-table-sg-pi
+29k quads
+424.417 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="301.3" cy="175.3" r="3.4"><title>quad-table-sg-pi
+58k quads
+829.148 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="337.3" cy="152.2" r="3.4"><title>quad-table-sg-pi
+145k quads
+2.07271 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="364.6" cy="132.7" r="3.4"><title>quad-table-sg-pi
+290k quads
+4.47812 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="391.9" cy="113.8" r="3.4"><title>quad-table-sg-pi
+581k quads
+9.48105 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="427.9" cy="87.7" r="3.4"><title>quad-table-sg-pi
+1.5M quads
+26.65 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="455.1" cy="69.4" r="3.4"><title>quad-table-sg-pi
+2.9M quads
+54.9724 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="482.4" cy="51.2" r="3.4"><title>quad-table-sg-pi
+5.8M quads
+112.921 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="518.4" cy="30.5" r="3.4"><title>quad-table-sg-pi
+15M quads
+256.832 ms</title></circle></svg><p class="note">exponent 0.93 (linear), R² 0.988</p></div><div class="card"><h3>q08_class_with_provenance</h3><p class="sub">10,000 rows at full size</p><div class="legend"><span class="key"><i style="background:var(--s1)"></i>quad-table-sg-fi</span><span class="key"><i style="background:var(--s2)"></i>quad-table-sg-pi</span></div><svg viewBox="0 0 560 330" class="chart" role="img"><defs><clipPath id="plot11"><rect x="66" y="16" width="478" height="270"/></clipPath></defs><line class="grid" x1="66" y1="267.4" x2="544" y2="267.4"/><text class="tick ty" x="58" y="270.9">10 µs</text><line class="grid" x1="66" y1="238.7" x2="544" y2="238.7"/><text class="tick ty" x="58" y="242.2">20 µs</text><line class="grid" x1="66" y1="200.9" x2="544" y2="200.9"/><text class="tick ty" x="58" y="204.4">50 µs</text><line class="grid" x1="66" y1="172.2" x2="544" y2="172.2"/><text class="tick ty" x="58" y="175.7">100 µs</text><line class="grid" x1="66" y1="143.6" x2="544" y2="143.6"/><text class="tick ty" x="58" y="147.1">200 µs</text><line class="grid" x1="66" y1="105.7" x2="544" y2="105.7"/><text class="tick ty" x="58" y="109.2">500 µs</text><line class="grid" x1="66" y1="77.1" x2="544" y2="77.1"/><text class="tick ty" x="58" y="80.6">1 ms</text><line class="grid" x1="66" y1="48.5" x2="544" y2="48.5"/><text class="tick ty" x="58" y="52.0">2 ms</text><line class="grid" x1="141.6" y1="16" x2="141.6" y2="286"/><text class="tick tx" x="141.6" y="302">1.0k</text><line class="grid" x1="232.2" y1="16" x2="232.2" y2="286"/><text class="tick tx" x="232.2" y="302">10k</text><line class="grid" x1="322.7" y1="16" x2="322.7" y2="286"/><text class="tick tx" x="322.7" y="302">100k</text><line class="grid" x1="413.2" y1="16" x2="413.2" y2="286"/><text class="tick tx" x="413.2" y="302">1.0M</text><line class="grid" x1="503.7" y1="16" x2="503.7" y2="286"/><text class="tick tx" x="503.7" y="302">10M</text><text class="axis tx" x="305" y="324">quads stored</text><text class="axis" transform="translate(13,151) rotate(-90)" text-anchor="middle">time per execution</text><polyline class="fit" clip-path="url(#plot11)" style="stroke:var(--s1)" points="91.6,289.4 102.3,282.2 112.9,274.9 123.6,267.7 134.3,260.5 145.0,253.2 155.6,246.0 166.3,238.8 177.0,231.5 187.6,224.3 198.3,217.1 209.0,209.8 219.6,202.6 230.3,195.4 241.0,188.1 251.7,180.9 262.3,173.7 273.0,166.4 283.7,159.2 294.3,152.0 305.0,144.7 315.7,137.5 326.3,130.3 337.0,123.0 347.7,115.8 358.3,108.6 369.0,101.3 379.7,94.1 390.4,86.9 401.0,79.6 411.7,72.4 422.4,65.2 433.0,57.9 443.7,50.7 454.4,43.5 465.0,36.2 475.7,29.0 486.4,21.8 497.1,14.5 507.7,7.3 518.4,0.1"/><polyline class="link" style="stroke:var(--s1)" points="91.6,267.4 120.8,259.7 153.5,260.0 181.4,243.7 209.3,231.8 246.7,202.9 274.5,176.2 301.3,150.2 337.3,114.0 364.6,83.2 391.9,44.7 427.9,42.9 455.1,41.9 482.4,30.5 518.4,34.3"/><circle class="pt" style="fill:var(--s1)" cx="91.6" cy="267.4" r="3.4"><title>quad-table-sg-fi
+280 quads
+9.9892 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="120.8" cy="259.7" r="3.4"><title>quad-table-sg-fi
+589 quads
+12.031 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="153.5" cy="260.0" r="3.4"><title>quad-table-sg-fi
+1.4k quads
+11.9569 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="181.4" cy="243.7" r="3.4"><title>quad-table-sg-fi
+2.7k quads
+17.7263 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="209.3" cy="231.8" r="3.4"><title>quad-table-sg-fi
+5.6k quads
+23.6306 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="246.7" cy="202.9" r="3.4"><title>quad-table-sg-fi
+14k quads
+47.651 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="274.5" cy="176.2" r="3.4"><title>quad-table-sg-fi
+29k quads
+90.9134 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="301.3" cy="150.2" r="3.4"><title>quad-table-sg-fi
+58k quads
+170.325 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="337.3" cy="114.0" r="3.4"><title>quad-table-sg-fi
+145k quads
+409.653 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="364.6" cy="83.2" r="3.4"><title>quad-table-sg-fi
+290k quads
+862.568 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="391.9" cy="44.7" r="3.4"><title>quad-table-sg-fi
+581k quads
+2.19324 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="427.9" cy="42.9" r="3.4"><title>quad-table-sg-fi
+1.5M quads
+2.28849 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="455.1" cy="41.9" r="3.4"><title>quad-table-sg-fi
+2.9M quads
+2.34607 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="482.4" cy="30.5" r="3.4"><title>quad-table-sg-fi
+5.8M quads
+3.09279 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="518.4" cy="34.3" r="3.4"><title>quad-table-sg-fi
+15M quads
+2.81869 ms</title></circle><polyline class="fit" clip-path="url(#plot11)" style="stroke:var(--s2)" points="91.6,290.4 102.3,283.2 112.9,276.0 123.6,268.7 134.3,261.5 145.0,254.3 155.6,247.0 166.3,239.8 177.0,232.6 187.6,225.3 198.3,218.1 209.0,210.9 219.6,203.6 230.3,196.4 241.0,189.2 251.7,181.9 262.3,174.7 273.0,167.5 283.7,160.2 294.3,153.0 305.0,145.8 315.7,138.5 326.3,131.3 337.0,124.1 347.7,116.8 358.3,109.6 369.0,102.4 379.7,95.1 390.4,87.9 401.0,80.7 411.7,73.4 422.4,66.2 433.0,59.0 443.7,51.7 454.4,44.5 465.0,37.3 475.7,30.0 486.4,22.8 497.1,15.6 507.7,8.3 518.4,1.1"/><polyline class="link" style="stroke:var(--s2)" points="91.6,271.5 120.8,253.4 153.5,264.3 181.4,247.4 209.3,230.1 246.7,206.8 274.5,177.1 301.3,152.6 337.3,115.3 364.6,81.0 391.9,42.8 427.9,44.3 455.1,41.0 482.4,38.5 518.4,32.8"/><circle class="pt" style="fill:var(--s2)" cx="91.6" cy="271.5" r="3.4"><title>quad-table-sg-pi
+280 quads
+9.04021 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="120.8" cy="253.4" r="3.4"><title>quad-table-sg-pi
+589 quads
+14.0199 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="153.5" cy="264.3" r="3.4"><title>quad-table-sg-pi
+1.4k quads
+10.7731 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="181.4" cy="247.4" r="3.4"><title>quad-table-sg-pi
+2.7k quads
+16.2308 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="209.3" cy="230.1" r="3.4"><title>quad-table-sg-pi
+5.6k quads
+24.6704 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="246.7" cy="206.8" r="3.4"><title>quad-table-sg-pi
+14k quads
+43.357 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="274.5" cy="177.1" r="3.4"><title>quad-table-sg-pi
+29k quads
+88.9741 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="301.3" cy="152.6" r="3.4"><title>quad-table-sg-pi
+58k quads
+160.751 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="337.3" cy="115.3" r="3.4"><title>quad-table-sg-pi
+145k quads
+396.673 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="364.6" cy="81.0" r="3.4"><title>quad-table-sg-pi
+290k quads
+910.739 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="391.9" cy="42.8" r="3.4"><title>quad-table-sg-pi
+581k quads
+2.29219 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="427.9" cy="44.3" r="3.4"><title>quad-table-sg-pi
+1.5M quads
+2.21454 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="455.1" cy="41.0" r="3.4"><title>quad-table-sg-pi
+2.9M quads
+2.39818 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="482.4" cy="38.5" r="3.4"><title>quad-table-sg-pi
+5.8M quads
+2.54394 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="518.4" cy="32.8" r="3.4"><title>quad-table-sg-pi
+15M quads
+2.9231 ms</title></circle></svg><p class="note">exponent 0.65 (sub-linear), R² 0.954</p></div><div class="card"><h3>q09_total_quads</h3><p class="sub">1 rows at full size</p><div class="legend"><span class="key"><i style="background:var(--s1)"></i>quad-table-sg-fi</span><span class="key"><i style="background:var(--s2)"></i>quad-table-sg-pi</span></div><svg viewBox="0 0 560 330" class="chart" role="img"><defs><clipPath id="plot12"><rect x="66" y="16" width="478" height="270"/></clipPath></defs><line class="grid" x1="66" y1="267.9" x2="544" y2="267.9"/><text class="tick ty" x="58" y="271.4">20 µs</text><line class="grid" x1="66" y1="240.2" x2="544" y2="240.2"/><text class="tick ty" x="58" y="243.7">50 µs</text><line class="grid" x1="66" y1="219.2" x2="544" y2="219.2"/><text class="tick ty" x="58" y="222.7">100 µs</text><line class="grid" x1="66" y1="198.2" x2="544" y2="198.2"/><text class="tick ty" x="58" y="201.7">200 µs</text><line class="grid" x1="66" y1="170.5" x2="544" y2="170.5"/><text class="tick ty" x="58" y="174.0">500 µs</text><line class="grid" x1="66" y1="149.5" x2="544" y2="149.5"/><text class="tick ty" x="58" y="153.0">1 ms</text><line class="grid" x1="66" y1="128.5" x2="544" y2="128.5"/><text class="tick ty" x="58" y="132.0">2 ms</text><line class="grid" x1="66" y1="100.7" x2="544" y2="100.7"/><text class="tick ty" x="58" y="104.2">5 ms</text><line class="grid" x1="66" y1="79.7" x2="544" y2="79.7"/><text class="tick ty" x="58" y="83.2">10 ms</text><line class="grid" x1="66" y1="58.8" x2="544" y2="58.8"/><text class="tick ty" x="58" y="62.3">20 ms</text><line class="grid" x1="66" y1="31.0" x2="544" y2="31.0"/><text class="tick ty" x="58" y="34.5">50 ms</text><line class="grid" x1="141.6" y1="16" x2="141.6" y2="286"/><text class="tick tx" x="141.6" y="302">1.0k</text><line class="grid" x1="232.2" y1="16" x2="232.2" y2="286"/><text class="tick tx" x="232.2" y="302">10k</text><line class="grid" x1="322.7" y1="16" x2="322.7" y2="286"/><text class="tick tx" x="322.7" y="302">100k</text><line class="grid" x1="413.2" y1="16" x2="413.2" y2="286"/><text class="tick tx" x="413.2" y="302">1.0M</text><line class="grid" x1="503.7" y1="16" x2="503.7" y2="286"/><text class="tick tx" x="503.7" y="302">10M</text><text class="axis tx" x="305" y="324">quads stored</text><text class="axis" transform="translate(13,151) rotate(-90)" text-anchor="middle">time per execution</text><polyline class="fit" clip-path="url(#plot12)" style="stroke:var(--s1)" points="91.6,303.7 102.3,297.4 112.9,291.0 123.6,284.6 134.3,278.3 145.0,271.9 155.6,265.5 166.3,259.2 177.0,252.8 187.6,246.4 198.3,240.1 209.0,233.7 219.6,227.3 230.3,221.0 241.0,214.6 251.7,208.2 262.3,201.9 273.0,195.5 283.7,189.1 294.3,182.7 305.0,176.4 315.7,170.0 326.3,163.6 337.0,157.3 347.7,150.9 358.3,144.5 369.0,138.2 379.7,131.8 390.4,125.4 401.0,119.1 411.7,112.7 422.4,106.3 433.0,100.0 443.7,93.6 454.4,87.2 465.0,80.8 475.7,74.5 486.4,68.1 497.1,61.7 507.7,55.4 518.4,49.0"/><polyline class="link" style="stroke:var(--s1)" points="91.6,271.2 120.8,265.8 153.5,266.5 181.4,257.9 209.3,249.1 246.7,228.4 274.5,212.3 301.3,194.4 337.3,168.7 364.6,148.2 391.9,127.0 427.9,99.8 455.1,78.9 482.4,57.9 518.4,30.5"/><circle class="pt" style="fill:var(--s1)" cx="91.6" cy="271.2" r="3.4"><title>quad-table-sg-fi
+280 quads
+17.9658 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="120.8" cy="265.8" r="3.4"><title>quad-table-sg-fi
+589 quads
+21.481 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="153.5" cy="266.5" r="3.4"><title>quad-table-sg-fi
+1.4k quads
+20.9764 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="181.4" cy="257.9" r="3.4"><title>quad-table-sg-fi
+2.7k quads
+27.839 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="209.3" cy="249.1" r="3.4"><title>quad-table-sg-fi
+5.6k quads
+37.2945 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="246.7" cy="228.4" r="3.4"><title>quad-table-sg-fi
+14k quads
+73.648 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="274.5" cy="212.3" r="3.4"><title>quad-table-sg-fi
+29k quads
+125.546 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="301.3" cy="194.4" r="3.4"><title>quad-table-sg-fi
+58k quads
+226.404 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="337.3" cy="168.7" r="3.4"><title>quad-table-sg-fi
+145k quads
+529.217 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="364.6" cy="148.2" r="3.4"><title>quad-table-sg-fi
+290k quads
+1.04178 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="391.9" cy="127.0" r="3.4"><title>quad-table-sg-fi
+581k quads
+2.09962 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="427.9" cy="99.8" r="3.4"><title>quad-table-sg-fi
+1.5M quads
+5.16115 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="455.1" cy="78.9" r="3.4"><title>quad-table-sg-fi
+2.9M quads
+10.2691 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="482.4" cy="57.9" r="3.4"><title>quad-table-sg-fi
+5.8M quads
+20.5845 ms</title></circle><circle class="pt" style="fill:var(--s1)" cx="518.4" cy="30.5" r="3.4"><title>quad-table-sg-fi
+15M quads
+50.8751 ms</title></circle><polyline class="fit" clip-path="url(#plot12)" style="stroke:var(--s2)" points="91.6,304.3 102.3,297.9 112.9,291.5 123.6,285.1 134.3,278.8 145.0,272.4 155.6,266.0 166.3,259.6 177.0,253.2 187.6,246.9 198.3,240.5 209.0,234.1 219.6,227.7 230.3,221.3 241.0,215.0 251.7,208.6 262.3,202.2 273.0,195.8 283.7,189.4 294.3,183.1 305.0,176.7 315.7,170.3 326.3,163.9 337.0,157.5 347.7,151.2 358.3,144.8 369.0,138.4 379.7,132.0 390.4,125.6 401.0,119.3 411.7,112.9 422.4,106.5 433.0,100.1 443.7,93.7 454.4,87.4 465.0,81.0 475.7,74.6 486.4,68.2 497.1,61.9 507.7,55.5 518.4,49.1"/><polyline class="link" style="stroke:var(--s2)" points="91.6,271.5 120.8,264.6 153.5,267.8 181.4,260.0 209.3,248.1 246.7,230.5 274.5,212.2 301.3,194.7 337.3,168.7 364.6,148.5 391.9,126.8 427.9,100.0 455.1,79.0 482.4,58.2 518.4,30.5"/><circle class="pt" style="fill:var(--s2)" cx="91.6" cy="271.5" r="3.4"><title>quad-table-sg-pi
+280 quads
+17.7493 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="120.8" cy="264.6" r="3.4"><title>quad-table-sg-pi
+589 quads
+22.3211 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="153.5" cy="267.8" r="3.4"><title>quad-table-sg-pi
+1.4k quads
+20.0487 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="181.4" cy="260.0" r="3.4"><title>quad-table-sg-pi
+2.7k quads
+25.9556 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="209.3" cy="248.1" r="3.4"><title>quad-table-sg-pi
+5.6k quads
+38.4409 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="246.7" cy="230.5" r="3.4"><title>quad-table-sg-pi
+14k quads
+68.8875 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="274.5" cy="212.2" r="3.4"><title>quad-table-sg-pi
+29k quads
+126.157 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="301.3" cy="194.7" r="3.4"><title>quad-table-sg-pi
+58k quads
+224.414 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="337.3" cy="168.7" r="3.4"><title>quad-table-sg-pi
+145k quads
+530.076 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="364.6" cy="148.5" r="3.4"><title>quad-table-sg-pi
+290k quads
+1.03086 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="391.9" cy="126.8" r="3.4"><title>quad-table-sg-pi
+581k quads
+2.11133 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="427.9" cy="100.0" r="3.4"><title>quad-table-sg-pi
+1.5M quads
+5.12731 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="455.1" cy="79.0" r="3.4"><title>quad-table-sg-pi
+2.9M quads
+10.2584 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="482.4" cy="58.2" r="3.4"><title>quad-table-sg-pi
+5.8M quads
+20.3493 ms</title></circle><circle class="pt" style="fill:var(--s2)" cx="518.4" cy="30.5" r="3.4"><title>quad-table-sg-pi
+15M quads
+50.9014 ms</title></circle></svg><p class="note">exponent 0.77 (sub-linear), R² 0.964</p></div><div class="card"><h3>q10_subtree_extraction</h3><p class="sub">100 rows at full size</p><div class="legend"><span class="key"><i style="background:var(--s1)"></i>quad-table-sg-fi</span><span class="key"><i style="background:var(--s2)"></i>quad-table-sg-pi</span></div><svg viewBox="0 0 560 330" class="chart" role="img"><defs><clipPath id="plot13"><rect x="66" y="16" width="478" height="270"/></clipPath></defs><line class="grid" x1="66" y1="249.0" x2="544" y2="249.0"/><text class="tick ty" x="58" y="252.5">15 µs</text><line class="grid" x1="66" y1="184.9" x2="544" y2="184.9"/><text class="tick ty" x="58" y="188.4">20 µs</text><line class="grid" x1="66" y1="94.7" x2="544" y2="94.7"/><text class="tick ty" x="58" y="98.2">30 µs</text><line class="grid" x1="66" y1="30.6" x2="544" y2="30.6"/><text class="tick ty" x="58" y="34.1">40 µs</text><line class="grid" x1="141.6" y1="16" x2="141.6" y2="286"/><text class="tick tx" x="141.6" y="302">1.0k</text><line class="grid" x1="232.2" y1="16" x2="232.2" y2="286"/><text class="tick tx" x="232.2" y="302">10k</text><line class="grid" x1="322.7" y1="16" x2="322.7" y2="286"/><text class="tick tx" x="322.7" y="302">100k</text><line class="grid" x1="413.2" y1="16" x2="413.2" y2="286"/><text class="tick tx" x="413.2" y="302">1.0M</text><line class="grid" x1="503.7" y1="16" x2="503.7" y2="286"/><text class="tick tx" x="503.7" y="302">10M</text><text class="axis tx" x="305" y="324">quads stored</text><text class="axis" transform="translate(13,151) rotate(-90)" text-anchor="middle">time per execution</text><polyline class="fit" clip-path="url(#plot13)" style="stroke:var(--s1)" points="91.6,240.8 102.3,238.7 112.9,236.7 123.6,234.6 134.3,232.6 145.0,230.5 155.6,228.5 166.3,226.4 177.0,224.4 187.6,222.4 198.3,220.3 209.0,218.3 219.6,216.2 230.3,214.2 241.0,212.1 251.7,210.1 262.3,208.0 273.0,206.0 283.7,203.9 294.3,201.9 305.0,199.8 315.7,197.8 326.3,195.7 337.0,193.7 347.7,191.7 358.3,189.6 369.0,187.6 379.7,185.5 390.4,183.5 401.0,181.4 411.7,179.4 422.4,177.3 433.0,175.3 443.7,173.2 454.4,171.2 465.0,169.1 475.7,167.1 486.4,165.0 497.1,163.0 507.7,161.0 518.4,158.9"/><polyline class="link" style="stroke:var(--s1)" points="91.6,240.2 120.8,199.9 153.5,237.5 181.4,213.3 209.3,218.7 246.7,209.9 274.5,203.4 301.3,213.8 337.3,212.6 364.6,209.4 391.9,183.2 427.9,183.7 455.1,216.1 482.4,229.1 518.4,30.5"/><circle class="pt" style="fill:var(--s1)" cx="91.6" cy="240.2" r="3.4"><title>quad-table-sg-fi
+280 quads
+15.6009 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="120.8" cy="199.9" r="3.4"><title>quad-table-sg-fi
+589 quads
+18.7031 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="153.5" cy="237.5" r="3.4"><title>quad-table-sg-fi
+1.4k quads
+15.796 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="181.4" cy="213.3" r="3.4"><title>quad-table-sg-fi
+2.7k quads
+17.6102 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="209.3" cy="218.7" r="3.4"><title>quad-table-sg-fi
+5.6k quads
+17.1887 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="246.7" cy="209.9" r="3.4"><title>quad-table-sg-fi
+14k quads
+17.8763 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="274.5" cy="203.4" r="3.4"><title>quad-table-sg-fi
+29k quads
+18.41 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="301.3" cy="213.8" r="3.4"><title>quad-table-sg-fi
+58k quads
+17.5674 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="337.3" cy="212.6" r="3.4"><title>quad-table-sg-fi
+145k quads
+17.6656 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="364.6" cy="209.4" r="3.4"><title>quad-table-sg-fi
+290k quads
+17.9185 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="391.9" cy="183.2" r="3.4"><title>quad-table-sg-fi
+581k quads
+20.1539 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="427.9" cy="183.7" r="3.4"><title>quad-table-sg-fi
+1.5M quads
+20.1104 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="455.1" cy="216.1" r="3.4"><title>quad-table-sg-fi
+2.9M quads
+17.386 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="482.4" cy="229.1" r="3.4"><title>quad-table-sg-fi
+5.8M quads
+16.4014 µs</title></circle><circle class="pt" style="fill:var(--s1)" cx="518.4" cy="30.5" r="3.4"><title>quad-table-sg-fi
+15M quads
+40.0329 µs</title></circle><polyline class="fit" clip-path="url(#plot13)" style="stroke:var(--s2)" points="91.6,259.1 102.3,257.1 112.9,255.0 123.6,253.0 134.3,251.0 145.0,248.9 155.6,246.9 166.3,244.8 177.0,242.8 187.6,240.7 198.3,238.7 209.0,236.6 219.6,234.6 230.3,232.5 241.0,230.5 251.7,228.4 262.3,226.4 273.0,224.4 283.7,222.3 294.3,220.3 305.0,218.2 315.7,216.2 326.3,214.1 337.0,212.1 347.7,210.0 358.3,208.0 369.0,205.9 379.7,203.9 390.4,201.9 401.0,199.8 411.7,197.8 422.4,195.7 433.0,193.7 443.7,191.6 454.4,189.6 465.0,187.5 475.7,185.5 486.4,183.4 497.1,181.4 507.7,179.3 518.4,177.3"/><polyline class="link" style="stroke:var(--s2)" points="91.6,244.3 120.8,207.9 153.5,256.0 181.4,257.5 209.3,212.3 246.7,271.5 274.5,217.1 301.3,233.5 337.3,221.0 364.6,223.7 391.9,211.7 427.9,178.7 455.1,248.4 482.4,262.3 518.4,30.8"/><circle class="pt" style="fill:var(--s2)" cx="91.6" cy="244.3" r="3.4"><title>quad-table-sg-pi
+280 quads
+15.3191 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="120.8" cy="207.9" r="3.4"><title>quad-table-sg-pi
+589 quads
+18.0357 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="153.5" cy="256.0" r="3.4"><title>quad-table-sg-pi
+1.4k quads
+14.5351 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="181.4" cy="257.5" r="3.4"><title>quad-table-sg-pi
+2.7k quads
+14.4342 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="209.3" cy="212.3" r="3.4"><title>quad-table-sg-pi
+5.6k quads
+17.6826 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="246.7" cy="271.5" r="3.4"><title>quad-table-sg-pi
+14k quads
+13.5539 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="274.5" cy="217.1" r="3.4"><title>quad-table-sg-pi
+29k quads
+17.309 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="301.3" cy="233.5" r="3.4"><title>quad-table-sg-pi
+58k quads
+16.0809 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="337.3" cy="221.0" r="3.4"><title>quad-table-sg-pi
+145k quads
+17.0118 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="364.6" cy="223.7" r="3.4"><title>quad-table-sg-pi
+290k quads
+16.8029 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="391.9" cy="211.7" r="3.4"><title>quad-table-sg-pi
+581k quads
+17.7311 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="427.9" cy="178.7" r="3.4"><title>quad-table-sg-pi
+1.5M quads
+20.5665 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="455.1" cy="248.4" r="3.4"><title>quad-table-sg-pi
+2.9M quads
+15.0402 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="482.4" cy="262.3" r="3.4"><title>quad-table-sg-pi
+5.8M quads
+14.1262 µs</title></circle><circle class="pt" style="fill:var(--s2)" cx="518.4" cy="30.8" r="3.4"><title>quad-table-sg-pi
+15M quads
+39.9793 µs</title></circle></svg><p class="note">constant: no growth across a 51,876× increase in data (exponent +0.034, values span only 2.6×)</p></div></div>
+
+<div class="caveat">
+<b>How these are timed.</b> RDFox's own <code>Total statement evaluation time</code>
+is printed to the millisecond and reads <code>0.000 s</code> for the fastest
+queries at every corpus size — which is why they cannot be measured that way.
+Instead each query is repeated with <code>exec N</code> and the whole block is
+timed from outside the process, then divided by N; the shell's per-statement
+cost (~30 µs, measured at each size with a trivial control query) is subtracted.
+N is chosen per query per size to target a fixed amount of work, so a 14 µs
+lookup is averaged over thousands of executions and a 290 ms scan over a few.
+This matters for the conclusions, not just the charts: under millisecond
+timing the scan queries appeared to scale <i>linearly</i> (1.07–1.31), because
+the small-size readings were pinned at the resolution floor. Measured properly
+they are sub-linear (0.65–0.95).
+</div>
+
+<h2>All datapoints</h2>
+<table>
+<thead><tr><th>storage type</th><th>graphs</th><th>quads</th><th>memory</th>
+<th>import time</th></tr></thead>
+<tbody><tr><td><code>quad-table-sg-fi</code></td><td>10</td><td>280</td><td>3.9 MB</td><td>0.026 s</td></tr><tr><td><code>quad-table-sg-fi</code></td><td>20</td><td>589</td><td>4.1 MB</td><td>0.024 s</td></tr><tr><td><code>quad-table-sg-fi</code></td><td>50</td><td>1,351</td><td>4.2 MB</td><td>0.025 s</td></tr><tr><td><code>quad-table-sg-fi</code></td><td>100</td><td>2,748</td><td>4.6 MB</td><td>0.027 s</td></tr><tr><td><code>quad-table-sg-fi</code></td><td>200</td><td>5,589</td><td>4.9 MB</td><td>0.026 s</td></tr><tr><td><code>quad-table-sg-fi</code></td><td>500</td><td>14,475</td><td>5.5 MB</td><td>0.028 s</td></tr><tr><td><code>quad-table-sg-fi</code></td><td>1,000</td><td>29,380</td><td>6.2 MB</td><td>0.028 s</td></tr><tr><td><code>quad-table-sg-fi</code></td><td>2,000</td><td>58,035</td><td>9.1 MB</td><td>0.032 s</td></tr><tr><td><code>quad-table-sg-fi</code></td><td>5,000</td><td>144,896</td><td>18.6 MB</td><td>0.048 s</td></tr><tr><td><code>quad-table-sg-fi</code></td><td>10,000</td><td>290,488</td><td>33.1 MB</td><td>0.065 s</td></tr><tr><td><code>quad-table-sg-fi</code></td><td>20,000</td><td>581,196</td><td>62.1 MB</td><td>0.104 s</td></tr><tr><td><code>quad-table-sg-fi</code></td><td>50,000</td><td>1,453,641</td><td>152 MB</td><td>0.272 s</td></tr><tr><td><code>quad-table-sg-fi</code></td><td>100,000</td><td>2,905,462</td><td>296 MB</td><td>0.426 s</td></tr><tr><td><code>quad-table-sg-fi</code></td><td>200,000</td><td>5,812,920</td><td>583 MB</td><td>0.820 s</td></tr><tr><td><code>quad-table-sg-fi</code></td><td>500,000</td><td>14,525,277</td><td>1.4 GB</td><td>6.099 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>10</td><td>280</td><td>3.5 MB</td><td>0.024 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>20</td><td>589</td><td>3.6 MB</td><td>0.025 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>50</td><td>1,351</td><td>3.9 MB</td><td>0.025 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>100</td><td>2,748</td><td>4.1 MB</td><td>0.026 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>200</td><td>5,589</td><td>4.6 MB</td><td>0.026 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>500</td><td>14,475</td><td>5.1 MB</td><td>0.028 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>1,000</td><td>29,380</td><td>5.8 MB</td><td>0.029 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>2,000</td><td>58,035</td><td>8.3 MB</td><td>0.032 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>5,000</td><td>144,896</td><td>17.0 MB</td><td>0.047 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>10,000</td><td>290,488</td><td>30.9 MB</td><td>0.062 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>20,000</td><td>581,196</td><td>55.7 MB</td><td>0.100 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>50,000</td><td>1,453,641</td><td>134 MB</td><td>0.249 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>100,000</td><td>2,905,462</td><td>263 MB</td><td>0.406 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>200,000</td><td>5,812,920</td><td>516 MB</td><td>0.787 s</td></tr><tr><td><code>quad-table-sg-pi</code></td><td>500,000</td><td>14,525,277</td><td>1.2 GB</td><td>4.728 s</td></tr></tbody></table>
+</main>
+</body></html>
