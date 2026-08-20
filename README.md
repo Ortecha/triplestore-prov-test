@@ -1,21 +1,35 @@
-# RDFox named-graph provenance stress test — dataset generator
+# Named-graph provenance stress test for triplestores
 
-Synthetic data for measuring how RDFox memory and query time scale when
-provenance is modelled as **one named graph per document subsection**, with the
-graph URI itself described in the default graph.
+How does a triplestore hold up when provenance is modelled as **one named graph
+per document subsection**, with the graph URI itself described in the default
+graph? That pattern is expressive but multiplies named graphs alarmingly — one
+per subsection rather than one per document — and it is not obvious what that
+costs in memory or query time until you measure it.
+
+This generates a synthetic corpus in that shape at controlled sizes, loads it at
+increasing scales, and records memory and query time at each point.
 
 Python 3.10+ standard library only — the generator, the measurement harness and
 the HTML report have no dependencies. `validate_dataset.py` optionally uses
 `rdflib`.
 
-| File | |
-| --- | --- |
-| `generate_dataset.py` | builds the synthetic corpus |
-| `measure.py` | drives RDFox, records memory and query time at each size |
-| `report.py` | renders `results.json` as a self-contained HTML report |
-| `validate_dataset.py` | checks a dataset before spending RDFox time on it |
+| File | | Store-specific? |
+| --- | --- | --- |
+| `generate_dataset.py` | builds the synthetic corpus | no |
+| `measure.py` | loads it at increasing sizes, records memory and query time | **yes** — drives RDFox |
+| `report.py` | renders `results.json` as a self-contained HTML report | no |
+| `validate_dataset.py` | checks a dataset before spending benchmark time on it | no |
 
-## Results at a glance
+**Portability.** The corpus is plain TriG (or N-Quads) and the ten queries are
+plain SPARQL 1.1, so the dataset and query set load into any store with named
+graph support — nothing in either is RDFox-specific. The harness is the part
+that is: it drives the RDFox shell and parses its output. Pointing this at
+another triplestore means writing a new driver against the same contract, which
+is small — see [Testing another store](#testing-another-store).
+
+So far only RDFox 7.6 has been measured; every number below is from it.
+
+## Results at a glance — RDFox 7.6
 
 500,000 named graphs / 14,525,277 quads, 15 size points, both storage types.
 
@@ -30,7 +44,7 @@ the HTML report have no dependencies. `validate_dataset.py` optionally uses
 - **`quad-table-sg-pi` used 12% less memory** than `-fi` and was never slower —
   1.9× faster on the graph-keyed fan-out query.
 
-One machine, one seed, one dataset shape. Details and caveats below.
+One store, one machine, one seed, one dataset shape. Details and caveats below.
 
 ### Reading the full report
 
@@ -114,6 +128,9 @@ Throughput is about 1.7M quads/s on 8 workers (~5.8M quads in 3.4s), so even a
 
 ## How to get a clean scaling curve
 
+This part is store-agnostic — it is a property of how the corpus is cut, not of
+any particular engine.
+
 Shards are cut **exactly on log-spaced checkpoints** (10, 20, 50, 100, …) and
 graph *i* depends only on `(seed, i)` — never on the total. So a dataset of any
 size is a byte-exact prefix of a larger one with the same parameters, and you
@@ -141,8 +158,9 @@ not, that is a real finding, not a generator artefact.
 
 ## Running it against RDFox
 
-Verified against RDFox 7.6 (`RDFox-macOS-arm64-7.6`). Two things are worth
-knowing before you start, because both are easy to get wrong:
+Everything from here to [Testing another store](#testing-another-store) is
+RDFox-specific. Verified against RDFox 7.6 (`RDFox-macOS-arm64-7.6`). Two things
+are worth knowing before you start, because both are easy to get wrong:
 
 **`quad-table-sg-fi` is not a data store `type`.** It is the value of the
 separate **`quad-table-type`** parameter. The `type` parameter takes
@@ -318,7 +336,10 @@ reclaimable (inactive + purgeable). Don't size the experiment off that warning,
 but do close the browser before a large run — RDFox is RAM-resident and a real
 shortfall would distort exactly the numbers you are collecting.
 
-## The measurement harness
+## The measurement harness (RDFox)
+
+This is the one store-specific component. What it does is generic; how it talks
+to the store is not.
 
 ```bash
 python3 generate_dataset.py --graphs 500000 --workers 8 --out data500
@@ -372,9 +393,9 @@ Three things the harness does deliberately, because each one changes the answer:
   little variation is reported as *constant*, scattered points as *no reliable
   trend*.
 
-### What the first full run showed
+### What the first full run showed — RDFox 7.6
 
-500,000 graphs / 14,525,277 quads, 15 size points, 10 queries × 5 repeats:
+500,000 graphs / 14,525,277 quads, 15 size points:
 
 | | `quad-table-sg-fi` | `quad-table-sg-pi` |
 | --- | --- | --- |
@@ -402,10 +423,52 @@ Three things the harness does deliberately, because each one changes the answer:
   queries stayed at 1.00×. `q03` is the graph-keyed fan-out from a bound
   subject, which is worth knowing if that access path matters to you.
 
-Caveats: one machine, one seed, one dataset shape, cold cache, and `sandbox`
-mode throughout, so every figure is on the "freshly imported" baseline. Before
+Caveats: one store, one machine, one seed, one dataset shape, cold cache, and
+`sandbox` mode throughout, so every figure is on the "freshly imported" baseline. Before
 drawing conclusions, vary `--seed` and re-run — and treat the single-run numbers
 above as a starting point rather than a result.
+
+## Testing another store
+
+Everything except `measure.py` is store-agnostic. To point this at a different
+triplestore, replace the driver and keep the contract:
+
+1. **Create an empty store** in the configuration under test, and record its
+   memory before loading anything. Subtracting that baseline is what makes the
+   scaling exponent describe the data rather than the engine's fixed overhead —
+   on a small corpus the gross figure fits an exponent near zero purely because
+   the baseline dominates.
+2. **Import shards cumulatively** in `manifest.shards` order, stopping at each
+   `manifest.checkpoints` entry (`shards_to_load` says how many files in). Do
+   not reload between checkpoints, and stay in one process — separate processes
+   per size mostly measure allocator state and page cache.
+3. **Record memory and the stored quad count** at each checkpoint. The count
+   should equal that checkpoint's `quads` exactly, since the generator emits no
+   duplicates; a mismatch is a finding worth chasing.
+4. **Time each query in `queries/`.** Whatever timer the store exposes is
+   probably too coarse for the fast ones — RDFox's reads `0.000 s` for the point
+   lookups at *every* size. Repeat each query enough times to make a block
+   measurable, time the block externally, divide, and subtract the per-statement
+   overhead measured with a trivial control query.
+5. **Emit `results.json`.** `report.py` reads exactly five top-level keys:
+   `runs`, `fits`, `dataset_config`, `dataset_totals` and
+   `target_block_seconds`. A run is
+   `{storage_type, baseline_bytes, points: [...]}`, and a point is
+   `{graphs, facts, memory_bytes, memory_net_bytes, import_seconds,
+   queries: {name: {seconds, answers, repeats}}}`. Copy `dataset_config` and
+   `dataset_totals` straight out of the dataset's `manifest.json`, and build
+   `fits` with `measure.py:analyse(runs)` — that function and `fit_power_law`
+   are plain Python over the structure above and contain nothing store-specific.
+
+Then `python3 report.py results/results.json` gives you the same charts, and
+adding the new store's `storage_type` values to a single run makes the report
+compare them side by side on one axis.
+
+Two things that are easy to get wrong and are not specific to RDFox: check which
+serialisations the store's loader actually accepts (RDFox picks its parser from
+the *file extension* and silently misparses `.nq` as Turtle), and check whether
+its "memory used" figure is the store's own accounting or the process RSS — they
+are not the same number and only the first is comparable across engines.
 
 ## Knobs that change what you are measuring
 
@@ -446,9 +509,10 @@ empty — a query on a constant that does not occur measures nothing.
 | `q09_total_quads` | Baseline scan speed. |
 | `q10_subtree_extraction` | Provenance-driven retrieval: everything under one section. The realistic read pattern. |
 
-`q02`, `q03` and `q10` are the ones to watch when comparing `quad-table-sg-fi`
-against `quad-table-sg-pi`, since they are the graph-keyed access paths; `q04`
-and `q09` bound the scan cost.
+`q02`, `q03` and `q10` are the graph-keyed access paths — the ones that exercise
+whatever a store does with named graphs, and so the ones to watch when comparing
+storage configurations. On RDFox that meant `quad-table-sg-fi` against
+`quad-table-sg-pi`. `q04` and `q09` bound the scan cost.
 
 The query set adapts to the configuration: `--text-chars 0` drops `q07` and the
 `pv:text` join in `q01`, since the property no longer exists. One caveat worth
@@ -483,4 +547,6 @@ that exercises every code path.
 | sections / graphs | `https://rdfox-stress.example.org/sec/{doc}/{1.2.3}` |
 | documents | `https://rdfox-stress.example.org/doc/{n}` |
 
-Change the namespace with `--base`.
+Change the namespace with `--base`. The default still carries the name of the
+first store measured; it is only a namespace, but `--base https://example.org/`
+gives you a neutral one if that matters for your run.
