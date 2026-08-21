@@ -1028,10 +1028,10 @@ def main(argv=None) -> int:
         print(path)
 
     rendered = False
-    # summary.png is the white variant -- it is what the README embeds, so it
-    # is the one that has to look right by default. summary-dark.png is the
-    # transparent version, for dark backgrounds.
-    for svg_name, png_name in (("_summary-white.svg", "summary.png"),
+    # Both variants are named explicitly: summary-dark.png is the transparent
+    # one the README embeds (it reads on either GitHub theme), summary-white.png
+    # the opaque one for slides and docs.
+    for svg_name, png_name in (("_summary-white.svg", "summary-white.png"),
                                ("summary.svg", "summary-dark.png")):
         src_svg = os.path.join(outdir, svg_name)
         tmp = svg_name.startswith("_")
@@ -1046,7 +1046,7 @@ def main(argv=None) -> int:
             rendered = True
     if not rendered:
         print("  (no SVG rasteriser found — install librsvg or imagemagick "
-              "to also get summary.png / summary-dark.png)")
+              "to also get summary-dark.png / summary-white.png)")
     return 0
 
 

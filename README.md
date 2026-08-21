@@ -67,7 +67,7 @@ straight off disk.
 | File | |
 | --- | --- |
 | `results/summary-dark.png` | transparent background — the one embedded above, so it reads on GitHub's light *and* dark themes |
-| `results/summary.png` | white background and darker ink, for slides, docs and anywhere transparency is unwelcome |
+| `results/summary-white.png` | white background and darker ink, for slides, docs and anywhere transparency is unwelcome |
 | `results/summary.svg` | vector source, if you want to rescale or restyle it |
 
 Rasterising needs `rsvg-convert` (librsvg) or ImageMagick on the path; without
