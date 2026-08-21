@@ -1,0 +1,12 @@
+PREFIX pv: <https://rdfox-stress.example.org/prov/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+# Fan out from a frequently mentioned entity to every subsection that mentions it, with provenance.
+# Touches many named graphs.
+SELECT ?g ?sectionNumber ?parent ?p ?o
+WHERE {
+  GRAPH ?g { <https://rdfox-stress.example.org/e/0> ?p ?o }
+  ?g pv:sectionNumber ?sectionNumber ;
+     pv:parentSection  ?parent .
+}

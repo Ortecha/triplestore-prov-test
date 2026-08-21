@@ -1,0 +1,11 @@
+PREFIX pv: <https://rdfox-stress.example.org/prov/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+# Provenance-driven retrieval: all triples extracted from the subsections directly under one section.
+# The realistic read pattern.
+SELECT ?g ?s ?p ?o
+WHERE {
+  ?g pv:parentSection <https://rdfox-stress.example.org/sec/5208/3> .
+  GRAPH ?g { ?s ?p ?o }
+}

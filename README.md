@@ -19,6 +19,7 @@ the HTML report have no dependencies. `validate_dataset.py` optionally uses
 | `measure.py` | loads it at increasing sizes, records memory and query time | **yes** — drives RDFox |
 | `report.py` | renders `results.json` as a self-contained HTML report | no |
 | `validate_dataset.py` | checks a dataset before spending benchmark time on it | no |
+| `queries/` | the ten SPARQL queries, as used for the published results | no |
 
 **Portability.** The corpus is plain TriG (or N-Quads) and the ten queries are
 plain SPARQL 1.1, so the dataset and query set load into any store with named
@@ -493,8 +494,17 @@ ratio, the worst case for per-graph overhead).
 
 ## Queries
 
-Each is bound to constants sampled from the data, so none of them returns
-empty — a query on a constant that does not occur measures nothing.
+The ten queries live in [`queries/`](queries/). That committed copy is the exact
+set used for the published results above — regenerated from the same seed and
+verified to reproduce the same constants — so you can read the SPARQL without
+running anything.
+
+They are **not** hand-written per store: `generate_dataset.py` emits a fresh set
+alongside every dataset, bound to constants sampled from that data, because a
+query on a constant that does not occur returns instantly and measures nothing.
+Use the ones your own run produces (`<out>/queries/`); the committed copy is a
+reference, and its constants only exist in a 500,000-graph dataset built with
+the default seed.
 
 | Query | What it stresses |
 | --- | --- |

@@ -1,0 +1,12 @@
+PREFIX pv: <https://rdfox-stress.example.org/prov/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+# Two hops that cross a graph boundary: a hub entity's neighbour in one subsection, then everything said about that neighbour elsewhere.
+SELECT ?g1 ?g2 ?x ?p ?y
+WHERE {
+  GRAPH ?g1 { <https://rdfox-stress.example.org/e/0> ?r ?x }
+  GRAPH ?g2 { ?x ?p ?y }
+  FILTER(?g1 != ?g2)
+}
+LIMIT 1000

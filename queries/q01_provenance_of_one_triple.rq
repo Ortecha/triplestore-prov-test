@@ -1,0 +1,12 @@
+PREFIX pv: <https://rdfox-stress.example.org/prov/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+# The core access path: given one extracted triple, recover the subsection it came from, its text, section number and parent.
+SELECT ?g ?sectionNumber ?parent ?text
+WHERE {
+  GRAPH ?g { <https://rdfox-stress.example.org/e/1009852> <https://rdfox-stress.example.org/p/1> <https://rdfox-stress.example.org/e/1010001> }
+  ?g pv:sectionNumber ?sectionNumber ;
+     pv:parentSection  ?parent ;
+     pv:text           ?text .
+}

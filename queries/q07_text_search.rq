@@ -1,0 +1,11 @@
+PREFIX pv: <https://rdfox-stress.example.org/prov/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+# Scan every provenance literal.
+# Isolates the cost of the long text values in the dictionary.
+SELECT (COUNT(*) AS ?matches)
+WHERE {
+  ?g pv:text ?text .
+  FILTER(CONTAINS(?text, "nikemucas"))
+}

@@ -1,0 +1,10 @@
+PREFIX pv: <https://rdfox-stress.example.org/prov/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+# Read back a single subsection's extraction.
+# Bound graph, unbound triple pattern -- the cheapest possible graph-keyed access.
+SELECT ?s ?p ?o
+WHERE {
+  GRAPH <https://rdfox-stress.example.org/sec/5208/3.5> { ?s ?p ?o }
+}

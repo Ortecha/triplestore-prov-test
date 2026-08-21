@@ -1,0 +1,14 @@
+PREFIX pv: <https://rdfox-stress.example.org/prov/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+# Full scan plus aggregation: how many extracted triples each document contributed.
+# Worst case for a quad table.
+SELECT ?doc (COUNT(*) AS ?n)
+WHERE {
+  GRAPH ?g { ?s ?p ?o }
+  ?g pv:document ?doc .
+}
+GROUP BY ?doc
+ORDER BY DESC(?n)
+LIMIT 20

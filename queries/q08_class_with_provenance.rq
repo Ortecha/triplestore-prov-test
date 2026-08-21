@@ -1,0 +1,11 @@
+PREFIX pv: <https://rdfox-stress.example.org/prov/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+# Every instance of one class, joined to its subsection's section number: a large join between named graphs and the default graph.
+SELECT ?s ?sectionNumber
+WHERE {
+  GRAPH ?g { ?s a <https://rdfox-stress.example.org/c/0> }
+  ?g pv:sectionNumber ?sectionNumber .
+}
+LIMIT 10000
